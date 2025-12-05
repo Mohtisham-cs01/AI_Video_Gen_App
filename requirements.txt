@@ -1,0 +1,20 @@
+customtkinter
+# openai
+requests
+python-dotenv
+moviepy
+pydub
+# whisperx dependencies (usually need to be installed specifically, but listing here)
+# git+https://github.com/m-bain/whisperx.git
+torch
+torchaudio
+ffmpeg-python
+Pillow
+transformers
+pandas
+google-generativeai
+moviepy
+imageio[ffmpeg]
+google-genai
+langchain-community
+duckduckgo-search
