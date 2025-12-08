@@ -8,6 +8,7 @@ from ..services.llm_service import LLMService
 from ..services.media_service import MediaService
 from ..services.video_service import VideoService
 from ..utils.async_utils import AsyncTaskManager
+from ..utils.subtitle_utils import optimize_subtitles_for_llm
 from ..config import Config
 
 ctk.set_appearance_mode("Dark")
@@ -22,6 +23,8 @@ class App(ctk.CTk):
 
         # Managers
         self.task_manager = AsyncTaskManager()
+
+
         self.tts_service = get_tts_service("pollinations")  # Use Pollinations (working)
         self.subtitle_service = SubtitleService()
         self.llm_service = LLMService()
@@ -243,11 +246,15 @@ class App(ctk.CTk):
         
         # Step 3: LLM Scene Segmentation
         script = self.script_textbox.get("1.0", "end-1c")
+        
+        # Optimize subtitles for LLM to save tokens
+        optimized_subtitles = optimize_subtitles_for_llm(self.word_subtitles)
+        
         self.task_manager.submit_task(
             self.llm_service.segment_script_and_generate_queries,
             self._on_scenes_generated,
             script,
-            self.word_subtitles
+            optimized_subtitles
         )
 
     def _on_scenes_generated(self, result, error):
@@ -274,6 +281,9 @@ class App(ctk.CTk):
             
             if source == 'pexels':
                 media_url = self.media_service.search_pexels(query)
+                scene['media_url'] = media_url
+            elif source == 'duckduckgo':
+                media_url = self.media_service.search_ddg_images(query)
                 scene['media_url'] = media_url
             elif source == 'pollinations':
                 prompt = scene.get('image_prompt', query)

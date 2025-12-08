@@ -28,19 +28,58 @@ class VideoService:
             print(f"✗ Failed to download {url}: {e}")
             return None
     
+    def smart_fit(self, clip, target_size=(1920, 1080)):
+        """
+        Smart fit clip to target size without cropping.
+        If aspect ratio matches - scales to fill.
+        If aspect ratio differs - scales to fit (may have letterbox/pillarbox).
+        Compatible with MoviePy 2.2.1: resized(new_size=None, height=None, width=None)
+        """
+        w, h = clip.w, clip.h
+        target_w, target_h = target_size
+        
+        # Calculate aspect ratios
+        clip_ratio = w / h
+        target_ratio = target_w / target_h
+        
+        # Check if aspect ratios are similar (within 5% tolerance)
+        ratio_match = abs(clip_ratio - target_ratio) / target_ratio < 0.05
+        
+        if ratio_match:
+            # Aspect ratios match - scale to fill exactly
+            new_w = target_w
+            new_h = target_h
+        else:
+            # Aspect ratios differ - fit within target (no cropping)
+            scale_x = target_w / w
+            scale_y = target_h / h
+            scale = min(scale_x, scale_y)  # Use min to fit without cropping
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+        
+        # Resize using correct MoviePy 2.2.1 API
+        clip = clip.resized(new_size=(new_w, new_h))
+        
+        return clip
+
     def trim_or_loop_video(self, video_path, target_duration):
         """
         Trim video if longer than target_duration, loop if shorter.
+        Also resizes to fill 1920x1080.
         
         Args:
             video_path: Path to video file
             target_duration: Target duration in seconds
         
         Returns:
-            VideoFileClip with correct duration
+            VideoFileClip with correct duration and size
         """
         try:
             video = VideoFileClip(video_path)
+            
+            # Smart fit
+            video = self.smart_fit(video)
+            
             video_duration = video.duration
             
             if video_duration > target_duration:
@@ -65,7 +104,8 @@ class VideoService:
         try:
             print(f"  Creating {duration:.2f}s clip from image")
             # moviepy 2.x: duration is often set with with_duration
-            return ImageClip(image_path).with_duration(duration)
+            clip = ImageClip(image_path).with_duration(duration)
+            return self.smart_fit(clip)
         except Exception as e:
             print(f"Error converting image to clip: {e}")
             raise
