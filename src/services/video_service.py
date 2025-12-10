@@ -15,8 +15,15 @@ class VideoService:
         """Download media file from URL."""
         try:
             print(f"Downloading: {url}")
-            response = requests.get(url, stream=True, timeout=30)
+            # response = requests.get(url, stream=True, timeout=30)
+            # response.raise_for_status()
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0"
+            }
+
+            response = requests.get(url, headers=headers, stream=True, timeout=30)
             response.raise_for_status()
+
             
             with open(output_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
@@ -269,7 +276,8 @@ class VideoService:
                 codec='libx264',
                 audio_codec='aac',
                 fps=24,
-                preset='medium'
+                threads=4,
+                preset='ultrafast'
             )
             
             # Cleanup
