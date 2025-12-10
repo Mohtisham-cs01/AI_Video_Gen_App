@@ -1,8 +1,10 @@
 import os
 from moviepy import (
-    VideoFileClip, ImageClip, AudioFileClip,
+    ColorClip, VideoFileClip, ImageClip, AudioFileClip,
     concatenate_videoclips, CompositeVideoClip, TextClip
 )
+# from moviepy import CompositeVideoClip, ColorClip
+
 import moviepy.video.fx as vfx
 import requests
 from src.config import Config
@@ -221,18 +223,94 @@ class VideoService:
             # Return video without subtitles if subtitle fails
             return video_clip
     
+    # def combine_scenes(self, scenes, audio_path, output_path, subtitle_segments=None):
+    #     """
+    #     Combine all scene clips into final video with audio.
+        
+    #     Args:
+    #         scenes: List of scene dictionaries
+    #         audio_path: Path to audio file
+    #         output_path: Path to save final video
+    #         subtitle_segments: Optional subtitle segments
+        
+    #     Returns:
+    #         Path to final video
+    #     """
+    #     try:
+    #         print("\n" + "="*60)
+    #         print("STARTING VIDEO COMPOSITION")
+    #         print("="*60)
+            
+    #         output_dir = os.path.dirname(output_path)
+    #         if not os.path.exists(output_dir):
+    #             os.makedirs(output_dir)
+            
+    #         # Create clips for each scene
+    #         clips = []
+    #         print("\nscenes", scenes)
+    #         for scene in scenes:
+    #             clip = self.create_scene_clip(scene, output_dir)
+    #             clips.append(clip)
+            
+    #         if not clips:
+    #             raise Exception("No clips created!")
+            
+    #         print(f"\n✓ Created {len(clips)} scene clips")
+            
+    #         # Concatenate all clips
+    #         print("\nConcatenating clips...")
+    #         final_video = concatenate_videoclips(clips, method="compose")
+            
+    #         # Add audio
+    #         print("\nAdding audio track...")
+    #         audio = AudioFileClip(audio_path)
+    #         # moviepy 2.x: use with_audio
+    #         final_video = final_video.with_audio(audio)
+            
+    #         # Add subtitles if provided
+    #         if subtitle_segments:
+    #             final_video = self.add_subtitles_to_video(final_video, subtitle_segments)
+            
+    #         # Export
+    #         print(f"\nExporting final video to {output_path}...")
+    #         final_video.write_videofile(
+    #             output_path,
+    #             codec='libx264',
+    #             audio_codec='aac',
+    #             fps=24,
+    #             threads=4,
+    #             preset='ultrafast'
+    #         )
+            
+    #         # Cleanup
+    #         print("\nCleaning up temporary clips...")
+    #         for clip in self.temp_clips:
+    #             clip.close()
+    #         self.temp_clips = []
+            
+    #         print("\n" + "="*60)
+    #         print(f"✓ VIDEO GENERATION COMPLETE: {output_path}")
+    #         print("="*60)
+            
+    #         return output_path
+            
+    #     except Exception as e:
+    #         print(f"\n✗ Error combining scenes: {e}")
+    #         # Cleanup on error
+    #         for clip in self.temp_clips:
+    #             try:
+    #                 clip.close()
+    #             except:
+    #                 pass
+    #         self.temp_clips = []
+    #         raise
+
+
+
     def combine_scenes(self, scenes, audio_path, output_path, subtitle_segments=None):
         """
         Combine all scene clips into final video with audio.
-        
-        Args:
-            scenes: List of scene dictionaries
-            audio_path: Path to audio file
-            output_path: Path to save final video
-            subtitle_segments: Optional subtitle segments
-        
-        Returns:
-            Path to final video
+        Place scenes on timeline according to their start_time and end_time.
         """
         try:
             print("\n" + "="*60)
@@ -243,26 +321,41 @@ class VideoService:
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
             
+            # Get audio duration
+            audio = AudioFileClip(audio_path)
+            audio_duration = audio.duration
+            
+            # Create black background with audio duration
+            background = ColorClip(
+                size=(1920, 1080),  # Adjust to your resolution
+                color=(0, 0, 0),
+                duration=audio_duration
+            )
+            
             # Create clips for each scene
-            clips = []
-            print("\nscenes", scenes)
+            scene_clips = []
             for scene in scenes:
                 clip = self.create_scene_clip(scene, output_dir)
-                clips.append(clip)
+                start_time = scene['start_time']
+                end_time = scene['end_time']
+                duration = end_time - start_time
+                
+                # Set clip duration
+                clip = clip.with_duration(duration)
+                # Set clip position on timeline
+                clip = clip.with_start(start_time)
+                
+                scene_clips.append(clip)
             
-            if not clips:
-                raise Exception("No clips created!")
+            # Composite all clips on timeline
+            print(f"\n✓ Creating composite with {len(scene_clips)} scenes")
+            final_video = CompositeVideoClip(
+                [background] + scene_clips,
+                size=background.size,
+                bg_color=(0, 0, 0)
+            )
             
-            print(f"\n✓ Created {len(clips)} scene clips")
-            
-            # Concatenate all clips
-            print("\nConcatenating clips...")
-            final_video = concatenate_videoclips(clips, method="compose")
-            
-            # Add audio
-            print("\nAdding audio track...")
-            audio = AudioFileClip(audio_path)
-            # moviepy 2.x: use with_audio
+            # Set audio
             final_video = final_video.with_audio(audio)
             
             # Add subtitles if provided
