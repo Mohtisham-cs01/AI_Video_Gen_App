@@ -124,6 +124,14 @@ class App(ctk.CTk):
         if Config.GEMINI_API_KEY:
             self.gemini_key_entry.insert(0, Config.GEMINI_API_KEY)
 
+        # Groq API Key
+        self.groq_key_label = ctk.CTkLabel(self.tab_settings, text="Groq API Key (Optional, for fast transcription):")
+        self.groq_key_label.pack(pady=5, anchor="w")
+        self.groq_key_entry = ctk.CTkEntry(self.tab_settings, show="*")
+        self.groq_key_entry.pack(fill="x", pady=5)
+        if Config.GROQ_API_KEY:
+            self.groq_key_entry.insert(0, Config.GROQ_API_KEY)
+
         # TTS Service Selection
         self.tts_label = ctk.CTkLabel(self.tab_settings, text="TTS Service:")
         self.tts_label.pack(pady=5, anchor="w")
@@ -171,6 +179,9 @@ class App(ctk.CTk):
             print(f"Audio file uploaded: {file_path}")
 
     def start_generation(self):
+        # Update Config from UI
+        self._update_config_from_ui()
+
         # Check input mode
         if self.input_mode == "script":
             script = self.script_textbox.get("1.0", "end-1c")
@@ -399,6 +410,15 @@ class App(ctk.CTk):
         
         self.generate_video_btn.configure(state="normal")
 
+
+    def _update_config_from_ui(self):
+        """Update Config singleton with values from UI."""
+        if hasattr(self, 'api_key_entry'):
+            Config.PEXELS_API_KEY = self.api_key_entry.get().strip() or os.getenv("PEXELS_API_KEY")
+        if hasattr(self, 'gemini_key_entry'):
+            Config.GEMINI_API_KEY = self.gemini_key_entry.get().strip() or os.getenv("GEMINI_API_KEY")
+        if hasattr(self, 'groq_key_entry'):
+            Config.GROQ_API_KEY = self.groq_key_entry.get().strip() or os.getenv("GROQ_API_KEY")
 
     def on_closing(self):
         self.task_manager.stop()

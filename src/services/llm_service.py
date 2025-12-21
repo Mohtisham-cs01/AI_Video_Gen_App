@@ -32,6 +32,7 @@ class LLMService:
           * Use "pollinations" for abstract, fantasy, or very specific generated art.
         - 'image_prompt': Detailed prompt if source is 'pollinations'.
         
+        dont put gap timing between scenes.
         Return ONLY valid JSON. No markdown formatting.
         """
         
