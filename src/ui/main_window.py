@@ -10,16 +10,104 @@ from ..services.video_service import VideoService
 from ..utils.async_utils import AsyncTaskManager
 from ..utils.subtitle_utils import optimize_subtitles_for_llm
 from ..config import Config
+import webbrowser
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("blue")
+
+class SceneItem(ctk.CTkFrame):
+    def __init__(self, master, scene_data, index, on_retry_callback, media_service):
+        super().__init__(master)
+        self.scene_data = scene_data
+        self.index = index
+        self.on_retry = on_retry_callback
+        self.media_service = media_service
+        
+        self._setup_ui()
+        self.update_status()
+
+    def _setup_ui(self):
+        self.grid_columnconfigure(1, weight=1)
+        
+        # Header: ID + Time
+        header_text = f"Scene {self.scene_data.get('id')} ({self.scene_data.get('start_time')} - {self.scene_data.get('end_time')})"
+        self.header_label = ctk.CTkLabel(self, text=header_text, font=ctk.CTkFont(weight="bold"))
+        self.header_label.grid(row=0, column=0, columnspan=3, sticky="w", padx=10, pady=(10, 5))
+        
+        # Text
+        self.text_label = ctk.CTkLabel(self, text=f"\"{self.scene_data.get('text')}\"", text_color="gray", wraplength=600, justify="left")
+        self.text_label.grid(row=1, column=0, columnspan=3, sticky="w", padx=10, pady=5)
+        
+        # Controls Row
+        
+        # 1. Query
+        ctk.CTkLabel(self, text="Visual Query:").grid(row=2, column=0, sticky="w", padx=10)
+        self.query_entry = ctk.CTkEntry(self, width=200)
+        self.query_entry.insert(0, self.scene_data.get('visual_query', ''))
+        self.query_entry.grid(row=2, column=1, sticky="w", padx=5)
+        
+        # 2. Source
+        ctk.CTkLabel(self, text="Source:").grid(row=2, column=2, sticky="e", padx=5)
+        self.source_var = ctk.StringVar(value=self.scene_data.get('media_source', 'pexels'))
+        self.source_option = ctk.CTkOptionMenu(
+            self, 
+            values=["pexels", "pollinations", "duckduckgo"],
+            variable=self.source_var,
+            width=120
+        )
+        self.source_option.grid(row=2, column=3, sticky="e", padx=10)
+        
+        # 3. Status/Media
+        self.status_label = ctk.CTkLabel(self, text="Status: Pending", width=300, anchor="w")
+        self.status_label.grid(row=3, column=0, columnspan=2, sticky="w", padx=10, pady=10)
+        
+        # 4. Retry Button
+        self.retry_btn = ctk.CTkButton(self, text="Fetch/Retry", width=100, command=self._on_retry_click)
+        self.retry_btn.grid(row=3, column=3, sticky="e", padx=10, pady=10)
+
+    def _on_retry_click(self):
+        new_query = self.query_entry.get()
+        new_source = self.source_var.get()
+        
+        # Update local data
+        self.scene_data['visual_query'] = new_query
+        self.scene_data['media_source'] = new_source
+        
+        # Disable button
+        self.retry_btn.configure(state="disabled", text="Fetching...")
+        
+        # Trigger parent callback
+        self.on_retry(self.index, self.scene_data, self)
+
+    def update_status(self):
+        """Update UI based on scene_data state."""
+        media = self.scene_data.get('media_url') or self.scene_data.get('media_path')
+        if media:
+            if media.startswith("http"):
+                display_text = f"Ready: {media[:40]}..."
+                self.status_label.configure(text=display_text, text_color="green")
+                # Bind click to open URL
+                self.status_label.bind("<Button-1>", lambda e: webbrowser.open(media))
+                self.status_label.configure(cursor="hand2")
+            else:
+                display_text = f"Ready: {os.path.basename(media)}"
+                self.status_label.configure(text=display_text, text_color="green")
+                # Bind click to open file
+                self.status_label.bind("<Button-1>", lambda e: os.startfile(media) if os.name == 'nt' else None)
+                self.status_label.configure(cursor="hand2")
+        else:
+            self.status_label.configure(text="Status: No Media / Failed", text_color="red", cursor="")
+            self.status_label.unbind("<Button-1>")
+        
+        self.retry_btn.configure(state="normal", text="Fetch/Retry")
+
 
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
 
         self.title("AI Video Creator")
-        self.geometry("1000x700")
+        self.geometry("1100x800")
 
         # Managers
         self.task_manager = AsyncTaskManager()
@@ -37,6 +125,7 @@ class App(ctk.CTk):
         self.generated_audio_path = None
         self.word_subtitles = []
         self.scenes = []
+        self.scene_widgets = []
 
         self._init_ui()
         self._check_tasks()
@@ -104,8 +193,25 @@ class App(ctk.CTk):
         self.status_label.pack(pady=5)
 
     def _setup_preview_tab(self):
-        self.preview_textbox = ctk.CTkTextbox(self.tab_preview, state="disabled")
-        self.preview_textbox.pack(fill="both", expand=True, padx=10, pady=10)
+        # Header for Preview
+        header_frame = ctk.CTkFrame(self.tab_preview, fg_color="transparent")
+        header_frame.pack(fill="x", padx=5, pady=5)
+        
+        ctk.CTkLabel(header_frame, text="Scene Editor", font=ctk.CTkFont(size=16, weight="bold")).pack(side="left")
+        
+        # Action Buttons
+        self.generate_video_btn = ctk.CTkButton(
+            header_frame,
+            text="Generate Final Video",
+            command=self.start_video_generation,
+            fg_color="purple",
+            state="disabled"
+        )
+        self.generate_video_btn.pack(side="right")
+
+        # Scrollable list for scenes
+        self.scenes_frame = ctk.CTkScrollableFrame(self.tab_preview, width=800, height=500)
+        self.scenes_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
     def _setup_settings_tab(self):
         # Pexels API Key
@@ -226,8 +332,9 @@ class App(ctk.CTk):
         self.status_label.configure(text="Audio Generated. Generating Subtitles...")
         
         # Show Play Audio Button
-        self.play_audio_btn = ctk.CTkButton(self.tab_input, text="Play Audio Preview", command=self.play_audio, fg_color="blue")
-        self.play_audio_btn.pack(pady=5)
+        if not hasattr(self, 'play_audio_btn'):
+            self.play_audio_btn = ctk.CTkButton(self.tab_input, text="Play Audio Preview", command=self.play_audio, fg_color="blue")
+            self.play_audio_btn.pack(pady=5)
         
         # Step 2: Generate Subtitles
         self.task_manager.submit_task(
@@ -242,6 +349,7 @@ class App(ctk.CTk):
                 if os.name == 'nt':
                     os.startfile(self.generated_audio_path)
                 else:
+                    import subprocess
                     subprocess.call(('xdg-open', self.generated_audio_path))
             except Exception as e:
                 messagebox.showerror("Error", f"Could not play audio: {e}")
@@ -275,21 +383,39 @@ class App(ctk.CTk):
             return
 
         self.scenes = result.get('scenes', [])
+        # Initially, media_url/media_path is None
+        for scene in self.scenes:
+            scene['media_url'] = None
+            scene['media_path'] = None
+            
         self.status_label.configure(text="Scenes Analyzed. Fetching Media...")
         
-        # Step 4: Fetch Media (Parallelize this in a real app, here sequential for simplicity or batch)
-        # We will just start a task to fetch all media
+        # Immediately render scenes (status will be pending)
+        self._render_scenes()
+        self.tab_view.set("Preview")
+        
+        # Step 4: Fetch Media (All)
         self.task_manager.submit_task(
             self._fetch_all_media,
-            self._on_media_fetched
+            self._on_all_media_fetched
         )
 
     def _fetch_all_media(self):
         # Iterate scenes and fetch media
-        for scene in self.scenes:
-            query = scene.get('visual_query')
-            source = scene.get('media_source')
-            
+        for i, scene in enumerate(self.scenes):
+            self._fetch_single_scene_media(scene)
+            # Optional: callback to update individual row progress if we had granular callbacks
+        return self.scenes
+
+    def _fetch_single_scene_media(self, scene):
+        """Fetch media for a single scene dict, modifying it in place."""
+        query = scene.get('visual_query')
+        source = scene.get('media_source')
+        
+        scene['media_url'] = None # Reset
+        scene['media_path'] = None # Reset
+        
+        try:
             if source == 'pexels':
                 media_url = self.media_service.search_pexels(query)
                 scene['media_url'] = media_url
@@ -298,49 +424,60 @@ class App(ctk.CTk):
                 scene['media_url'] = media_url
             elif source == 'pollinations':
                 prompt = scene.get('image_prompt', query)
-                # Generate and save
-                filename = f"scene_{scene['id']}.jpg"
+                filename = f"scene_{scene['id']}_{hash(prompt)}.jpg" # unique-ish name
                 path = os.path.join(Config.OUTPUT_DIR, filename)
                 self.media_service.generate_image_pollinations(prompt, path)
                 scene['media_path'] = path
-        return self.scenes
-
-    def _on_media_fetched(self, result, error):
+        except Exception as e:
+            print(f"Error fetching media for scene {scene.get('id')}: {e}")
+            
+    def _on_all_media_fetched(self, result, error):
         if error:
             self.status_label.configure(text=f"Error (Media): {error}", text_color="red")
         else:
             self.status_label.configure(text="Processing Complete!", text_color="green")
-            self._update_preview()
+            self.generate_video_btn.configure(state="normal")
             
-            # Show Generate Video button
-            if not hasattr(self, 'generate_video_btn'):
-                self.generate_video_btn = ctk.CTkButton(
-                    self.tab_input,
-                    text="Generate Final Video",
-                    command=self.start_video_generation,
-                    fg_color="purple"
-                )
-                self.generate_video_btn.pack(pady=10)
-            else:
-                self.generate_video_btn.pack(pady=10)
-        
+            # Update all UI rows
+            for widget in self.scene_widgets:
+                widget.update_status()
+
         self.generate_btn.configure(state="normal")
 
-    def _update_preview(self):
-        self.preview_textbox.configure(state="normal")
-        self.preview_textbox.delete("1.0", "end")
+    def _render_scenes(self):
+        """Clear and rebuild the scene list."""
+        for widget in self.scene_widgets:
+            widget.destroy()
+        self.scene_widgets = []
         
-        text = "Generated Scenes:\n\n"
-        for scene in self.scenes:
-            text += f"Scene {scene.get('id')}:\n"
-            text += f"  Text: {scene.get('text')}\n"
-            text += f"  Time: {scene.get('start_time')} - {scene.get('end_time')}\n"
-            text += f"  Visual: {scene.get('visual_query')} ({scene.get('media_source')})\n"
-            text += f"  Media: {scene.get('media_url') or scene.get('media_path')}\n\n"
-            
-        self.preview_textbox.insert("0.0", text)
-        self.preview_textbox.configure(state="disabled")
-        self.tab_view.set("Preview")
+        # Build widgets
+        for i, scene in enumerate(self.scenes):
+            item = SceneItem(self.scenes_frame, scene, i, self._retry_single_scene, self.media_service)
+            item.pack(fill="x", pady=5, padx=5)
+            self.scene_widgets.append(item)
+
+    def _retry_single_scene(self, index, scene_data, widget):
+        """Callback from SceneItem to retry fetching."""
+        print(f"Retrying scene {index}: {scene_data['visual_query']} via {scene_data['media_source']}")
+        
+        # Submit single task
+        self.task_manager.submit_task(
+            self._fetch_single_scene_task,
+            lambda res, err: self._on_single_retry_complete(res, err, widget),
+            scene_data
+        )
+
+    def _fetch_single_scene_task(self, scene_data):
+        self._fetch_single_scene_media(scene_data)
+        return scene_data
+
+    def _on_single_retry_complete(self, result, error, widget):
+        if error:
+            print(f"Retry failed: {error}")
+            messagebox.showerror("Error", f"Failed to fetch media: {error}")
+        
+        # Result is the modified scene_data (which is same object reference anyway)
+        widget.update_status()
 
     def _check_tasks(self):
         self.task_manager.check_results()
@@ -352,6 +489,18 @@ class App(ctk.CTk):
             messagebox.showerror("Error", "Missing scenes or audio. Please generate preview first.")
             return
         
+        # Filter valid scenes
+        valid_scenes = []
+        for scene in self.scenes:
+            if scene.get('media_url') or (scene.get('media_path') and os.path.exists(scene.get('media_path'))):
+                valid_scenes.append(scene)
+            else:
+                print(f"Skipping scene {scene.get('id')} due to missing media.")
+        
+        if not valid_scenes:
+            messagebox.showerror("Error", "No valid scenes with media found. Please fix scenes in Preview tab.")
+            return
+
         self.status_label.configure(text="Generating Final Video...", text_color="blue")
         self.generate_video_btn.configure(state="disabled")
         
@@ -382,7 +531,7 @@ class App(ctk.CTk):
         self.task_manager.submit_task(
             self.video_service.combine_scenes,
             self._on_video_generated,
-            self.scenes,
+            valid_scenes,
             self.generated_audio_path,
             output_path,
             subtitle_segments
