@@ -11,6 +11,7 @@ class MediaService:
         """
         Searches Pexels for videos or photos.
         type: 'video' or 'photo'
+        orientation: 'landscape', 'portrait', or 'square'
         """
         if not self.pexels_api_key:
             print("Pexels API key missing.")
@@ -44,14 +45,15 @@ class MediaService:
             print(f"Pexels search error: {e}")
             return None
 
-    def generate_image_pollinations(self, prompt: str, output_path: str):
+    def generate_image_pollinations(self, prompt: str, output_path: str, width: int = 1920, height: int = 1080):
         """
-        Generates an image using Pollinations.ai
+        Generates an image using Pollinations.ai with specified dimensions.
         """
         try:
-            # Pollinations image URL format
-            # https://image.pollinations.ai/prompt/{prompt}
-            url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(prompt)}"
+            # Pollinations image URL format: https://image.pollinations.ai/prompt/{prompt}?width={width}&height={height}
+            url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(prompt)}?width={width}&height={height}&nologo=true"
+            print(f"Generating Pollinations image: {width}x{height}")
+            
             response = requests.get(url)
             response.raise_for_status()
             
@@ -60,11 +62,6 @@ class MediaService:
             return output_path
         except Exception as e:
             print(f"Pollinations image error: {e}")
-            return None
-
-            return output_path
-        except Exception as e:
-            print(f"Download error: {e}")
             return None
 
     def search_ddg_images(self, query: str):
@@ -84,9 +81,6 @@ class MediaService:
             
             if results and len(results) > 0:
                 # Return the first image URL (thumbnail or image)
-                # The example uses 'thumbnail', but 'image' might be better quality if available.
-                # Let's check what keys are usually there. 
-                # Based on user example: item["thumbnail"]
                 first_result = results[0]
                 image_url = first_result.get("image") or first_result.get("thumbnail")
                 

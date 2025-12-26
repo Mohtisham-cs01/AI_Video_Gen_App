@@ -167,6 +167,18 @@ class App(ctk.CTk):
         self.audio_mode_radio = ctk.CTkRadioButton(mode_frame, text="Audio File", variable=self.mode_var, value="audio", command=self.toggle_input_mode)
         self.audio_mode_radio.pack(side="left", padx=10)
         
+        # Aspect Ratio Section
+        ratio_frame = ctk.CTkFrame(self.tab_input)
+        ratio_frame.pack(fill="x", pady=5)
+        ctk.CTkLabel(ratio_frame, text="Aspect Ratio:").pack(side="left", padx=5)
+        self.ratio_var = ctk.StringVar(value="16:9")
+        self.ratio_option = ctk.CTkOptionMenu(
+            ratio_frame,
+            values=["16:9", "9:16", "1:1"],
+            variable=self.ratio_var
+        )
+        self.ratio_option.pack(side="left", padx=10)
+
         # Script Input
         self.script_label = ctk.CTkLabel(self.tab_input, text="Enter Script:")
         self.script_label.pack(pady=5, anchor="w")
@@ -399,6 +411,17 @@ class App(ctk.CTk):
             self._fetch_all_media,
             self._on_all_media_fetched
         )
+    
+    def _get_aspect_ratio_settings(self):
+        """Return (width, height, orientation) based on selection."""
+        ratio = self.ratio_var.get()
+        if ratio == "16:9":
+            return (1920, 1080, "landscape")
+        elif ratio == "9:16":
+            return (1080, 1920, "portrait")
+        elif ratio == "1:1":
+            return (1080, 1080, "square")
+        return (1920, 1080, "landscape")
 
     def _fetch_all_media(self):
         # Iterate scenes and fetch media
@@ -412,12 +435,15 @@ class App(ctk.CTk):
         query = scene.get('visual_query')
         source = scene.get('media_source')
         
+        width, height, orientation = self._get_aspect_ratio_settings()
+        
         scene['media_url'] = None # Reset
         scene['media_path'] = None # Reset
         
         try:
             if source == 'pexels':
-                media_url = self.media_service.search_pexels(query)
+                # Pass orientation
+                media_url = self.media_service.search_pexels(query, orientation=orientation)
                 scene['media_url'] = media_url
             elif source == 'duckduckgo':
                 media_url = self.media_service.search_ddg_images(query)
@@ -426,7 +452,8 @@ class App(ctk.CTk):
                 prompt = scene.get('image_prompt', query)
                 filename = f"scene_{scene['id']}_{hash(prompt)}.jpg" # unique-ish name
                 path = os.path.join(Config.OUTPUT_DIR, filename)
-                self.media_service.generate_image_pollinations(prompt, path)
+                # Pass dimensions
+                self.media_service.generate_image_pollinations(prompt, path, width, height)
                 scene['media_path'] = path
         except Exception as e:
             print(f"Error fetching media for scene {scene.get('id')}: {e}")
@@ -506,6 +533,9 @@ class App(ctk.CTk):
         
         output_path = os.path.join(Config.OUTPUT_DIR, "final_video.mp4")
         
+        # Get dimensions
+        width, height, _ = self._get_aspect_ratio_settings()
+        
         # Get subtitle segments from word_subtitles
         subtitle_segments = []
         if self.word_subtitles:
@@ -534,7 +564,8 @@ class App(ctk.CTk):
             valid_scenes,
             self.generated_audio_path,
             output_path,
-            subtitle_segments
+            subtitle_segments,
+            resolution=(width, height)
         )
     
     def _on_video_generated(self, result, error):
