@@ -321,8 +321,8 @@ class VideoService:
                 codec='libx264',
                 audio_codec='aac',
                 fps=24,
-                threads=4,
-                preset='medium' 
+                threads=8,
+                preset='ultrafast' 
             )
             
             print("\nCleaning up...")

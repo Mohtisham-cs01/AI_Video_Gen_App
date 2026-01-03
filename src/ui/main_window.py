@@ -61,9 +61,33 @@ class SceneItem(ctk.CTkFrame):
         self.status_label = ctk.CTkLabel(self, text="Status: Pending", width=300, anchor="w")
         self.status_label.grid(row=3, column=0, columnspan=2, sticky="w", padx=10, pady=10)
         
-        # 4. Retry Button
+        # 4. Upload Button
+        self.upload_btn = ctk.CTkButton(self, text="📁 Upload", width=80, command=self._on_manual_upload, fg_color="gray")
+        self.upload_btn.grid(row=3, column=2, sticky="e", padx=5, pady=10)
+
+        # 5. Retry Button
         self.retry_btn = ctk.CTkButton(self, text="Fetch/Retry", width=100, command=self._on_retry_click)
         self.retry_btn.grid(row=3, column=3, sticky="e", padx=10, pady=10)
+
+    def _on_manual_upload(self):
+        """Handle manual file upload for this scene."""
+        file_path = filedialog.askopenfilename(
+            title=f"Select Media for Scene {self.scene_data.get('id')}",
+            filetypes=[
+                ("Media files", "*.mp4 *.jpg *.png *.jpeg *.mov *.avi *.mkv"),
+                ("Images", "*.jpg *.png *.jpeg"),
+                ("Videos", "*.mp4 *.mov *.avi *.mkv")
+            ]
+        )
+        if file_path:
+            # Update data
+            self.scene_data['media_path'] = file_path
+            self.scene_data['media_url'] = None
+            self.scene_data['media_source'] = 'manual'
+            
+            # Update UI
+            self.update_status()
+            print(f"Manual media set for scene {self.scene_data.get('id')}: {file_path}")
 
     def _on_retry_click(self):
         new_query = self.query_entry.get()
@@ -592,13 +616,18 @@ class App(ctk.CTk):
 
 
     def _update_config_from_ui(self):
-        """Update Config singleton with values from UI."""
+        """Update Config singleton and .env with values from UI."""
         if hasattr(self, 'api_key_entry'):
-            Config.PEXELS_API_KEY = self.api_key_entry.get().strip() or os.getenv("PEXELS_API_KEY")
+            val = self.api_key_entry.get().strip()
+            if val: Config.save_key("PEXELS_API_KEY", val)
+            
         if hasattr(self, 'gemini_key_entry'):
-            Config.GEMINI_API_KEY = self.gemini_key_entry.get().strip() or os.getenv("GEMINI_API_KEY")
+            val = self.gemini_key_entry.get().strip()
+            if val: Config.save_key("GEMINI_API_KEY", val)
+            
         if hasattr(self, 'groq_key_entry'):
-            Config.GROQ_API_KEY = self.groq_key_entry.get().strip() or os.getenv("GROQ_API_KEY")
+            val = self.groq_key_entry.get().strip()
+            if val: Config.save_key("GROQ_API_KEY", val)
 
     def on_closing(self):
         self.task_manager.stop()

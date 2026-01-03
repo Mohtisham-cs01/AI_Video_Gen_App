@@ -16,3 +16,12 @@ class Config:
     def validate():
         if not Config.PEXELS_API_KEY:
             print("Warning: PEXELS_API_KEY not found in environment variables.")
+
+    @staticmethod
+    def save_key(key, value):
+        from dotenv import set_key
+        env_file = os.path.join(os.getcwd(), ".env")
+        # Update memory
+        setattr(Config, key, value)
+        # Update file
+        set_key(env_file, key, value)
