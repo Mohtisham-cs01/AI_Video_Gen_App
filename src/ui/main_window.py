@@ -286,6 +286,33 @@ class App(ctk.CTk):
         self.tts_option.pack(fill="x", pady=5)
         self.tts_option.set("Pollinations AI")  # Default (Gemini TTS not working)
 
+        # Media Sources Selection
+        self.media_sources_label = ctk.CTkLabel(self.tab_settings, text="Enabled Media Sources (for AI):")
+        self.media_sources_label.pack(pady=5, anchor="w")
+        
+        self.source_checkboxes = {}
+        sources = [
+            ("Stock Media (Pexels)", "pexels"),
+            ("AI Image (Pollinations)", "pollinations"),
+            ("Search Engine (DuckDuckGo)", "duckduckgo")
+        ]
+        
+        self.sources_frame = ctk.CTkFrame(self.tab_settings)
+        self.sources_frame.pack(fill="x", pady=5)
+        
+        for label, value in sources:
+            var = ctk.StringVar(value=value if value in Config.ENABLED_MEDIA_SOURCES else "")
+            cb = ctk.CTkCheckBox(
+                self.sources_frame, 
+                text=label, 
+                variable=var, 
+                onvalue=value, 
+                offvalue=""
+            )
+            cb.pack(pady=2, anchor="w", padx=10)
+            self.source_checkboxes[value] = var
+
+
     def change_tts_service(self, choice):
         if choice == "Pollinations AI":
             self.tts_service = get_tts_service("pollinations")
@@ -628,6 +655,20 @@ class App(ctk.CTk):
         if hasattr(self, 'groq_key_entry'):
             val = self.groq_key_entry.get().strip()
             if val: Config.save_key("GROQ_API_KEY", val)
+
+        if hasattr(self, 'source_checkboxes'):
+            selected_sources = []
+            for val, var in self.source_checkboxes.items():
+                if var.get():
+                    selected_sources.append(var.get())
+            
+            # Ensure at least one is selected, or handle empty case (default to all or pexels)
+            if not selected_sources:
+                 selected_sources = ["pexels", "pollinations", "duckduckgo"]
+                 
+            Config.ENABLED_MEDIA_SOURCES = selected_sources
+            Config.save_key("ENABLED_MEDIA_SOURCES", ",".join(selected_sources))
+
 
     def on_closing(self):
         self.task_manager.stop()

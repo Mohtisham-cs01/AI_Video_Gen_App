@@ -11,6 +11,9 @@ class Config:
     POLLINATIONS_MODEL = "flux" # or other models
     WHISPER_MODEL_SIZE = "medium"
     OUTPUT_DIR = os.path.join(os.getcwd(), "output")
+    
+    # Default enabled sources
+    ENABLED_MEDIA_SOURCES = os.getenv("ENABLED_MEDIA_SOURCES", "pexels,pollinations,duckduckgo").split(",")
 
     @staticmethod
     def validate():
