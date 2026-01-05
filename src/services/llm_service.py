@@ -1,5 +1,6 @@
 import json
 import requests
+import urllib.parse
 from ..config import Config
 
 class LLMService:
@@ -12,75 +13,131 @@ class LLMService:
         and visual queries using Pollinations.ai.
         """
         
-        system_prompt = """
-        You are an expert video director. Analyze the script and word timings to create a production plan.
+        # Dynamic source prompt based on enabled sources
+        available_sources_prompt = ""
+        enabled = Config.ENABLED_MEDIA_SOURCES
         
-        Input:
-        1. Script.
-        2. Word Timings (JSON).
-        
-        Output:
-        A JSON object with a 'scenes' list. Each scene:
-        - 'id': int
-        - 'text': Exact phrase.
-        - 'start_time': float
-        - 'end_time': float
-        - 'visual_query': Search query for Pexels or DuckDuckGo.
-        - 'media_source': "pexels", "duckduckgo", or "pollinations".
-          * Use "pexels" for high-quality stock footage/photos.
-          * Use "duckduckgo" for specific real-world entities, famous places, or when stock footage might be missing.
-          * Use "pollinations" for abstract, fantasy, or very specific generated art.
-        - 'image_prompt': Detailed prompt if source is 'pollinations'.
-        
-        dont put gap timing between scenes.
-        Return ONLY valid JSON. No markdown formatting.
-        """
-        
-        user_prompt = f"""
-        Script:
-        {script_text}
-        
-        Word Timings:
-        {json.dumps(word_subtitles)[:15000]} # Truncate if too long for GET request safety, though POST is better if supported. Pollinations usually GET.
-        """
-        
-        # Pollinations Text API: https://text.pollinations.ai/{prompt}?model={model}
-        # We need to be careful with URL length. Pollinations might support POST or we have to keep it short.
-        # Actually, for large inputs like this, Pollinations GET might fail.
-        # Let's try to use the prompt in the URL. If it's too long, we might have issues.
-        # However, the user specifically asked for Pollinations.ai text models.
-        # Let's assume standard usage.
-        
-        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+        if "pexels" in enabled:
+            available_sources_prompt += '\n* "pexels": Use for high-quality stock footage/photos.'
+        if "duckduckgo" in enabled:
+            available_sources_prompt += '\n* "duckduckgo": Use for specific real-world entities, famous places, or when stock footage might be missing.'
+        if "pollinations" in enabled:
+            available_sources_prompt += '\n* "pollinations": Use for abstract, fantasy, or very specific generated art.'
+            
+        system_prompt = f"""You are an expert video director. Analyze the script and word timings to create a production plan.
+
+    Input:
+    1. Script.
+    2. Word Timings (JSON).
+
+    Output:
+    A JSON object with a 'scenes' list. Each scene:
+    - 'id': int
+    - 'text': Exact phrase.
+    - 'start_time': float
+    - 'end_time': float
+    - 'visual_query': Search query for Pexels or DuckDuckGo.
+    - 'media_source': Choose from: {json.dumps(enabled)}.
+    {available_sources_prompt}
+    - 'image_prompt': Detailed prompt if source is 'pollinations'.
+
+    Don't put gap timing between scenes.
+    Return ONLY valid JSON. No markdown formatting."""
+
+        user_prompt = f"""Script:
+    {script_text}
+
+    Word Timings:
+    {json.dumps(word_subtitles)[:15000]}"""
+
+        # Combine system and user prompts are not needed for chat endpoint, but we keep them for logic
+        # full_prompt = f"{system_prompt}\n\n{user_prompt}" 
         
         try:
-            # Using openai compatibility endpoint of Pollinations if available would be easier, 
-            # but standard way is GET request.
-            # Let's try to keep it within reasonable limits or check if they have a POST endpoint.
-            # Official docs often show GET. Let's try GET.
-            
-            # To be safe with JSON parsing, we ask for it explicitly.
-            headers = {}
+            headers = {
+                "Content-Type": "application/json"
+            }
             if Config.POLLINATIONS_API_KEY:
                 headers["Authorization"] = f"Bearer {Config.POLLINATIONS_API_KEY}"
-            url = f"https://text.pollinations.ai/{requests.utils.quote(full_prompt)}?model=deepseek" # model=openai gives GPT-like responses
             
-            response = requests.get(url , headers=headers)
-            response.raise_for_status()
+            # Use Unified API with OpenAI-compatible Chat Endpoint for reliability (POST)
+            url = "https://gen.pollinations.ai/v1/chat/completions"
             
-            result_text = response.text
+            payload = {
+                "model": "nova-micro", # User preferred model
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "json": "true"  # Pollinations specific parameter for JSON mode
+            }
             
-            # Clean up potential markdown code blocks
-            if "```json" in result_text:
-                result_text = result_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in result_text:
-                result_text = result_text.split("```")[1].split("```")[0].strip()
+            print(f"DEBUG: Sending POST request to {url}")
+            # print(f"DEBUG: Payload model: {payload['model']}")
+            
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            
+            print(f"DEBUG: Response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result_text = response.text.strip()
                 
-            return json.loads(result_text)
-            
+                # The response from chat/completions is usually a JSON object with 'choices'
+                # But Pollinations sometimes returns just the content or specific structure.
+                # Standard OpenAI format: response['choices'][0]['message']['content']
+                # However, with json=true, Pollinations might return the raw JSON object directly in content?
+                # Let's handle both standard OpenAI format and direct JSON return just in case.
+                
+                try:
+                    resp_json = response.json()
+                    content = None
+                    
+                    if "choices" in resp_json and len(resp_json["choices"]) > 0:
+                        content = resp_json["choices"][0]["message"]["content"]
+                    else:
+                        # Maybe it returned the content directly? (unlikely for strict OpenAI compat but possible for Pollinations)
+                        # or response.text was the content?
+                        content = result_text
+
+                    # Now parse the content string as JSON usually
+                    if isinstance(content, str):
+                        # Clean markdown
+                        if "```json" in content:
+                            content = content.split("```json")[1].split("```")[0].strip()
+                        elif "```" in content:
+                            content = content.split("```")[1].split("```")[0].strip()
+                        
+                        parsed_result = json.loads(content)
+                    else:
+                        parsed_result = content # It might be already a dict if Pollinations magic happened
+                        
+                except json.JSONDecodeError:
+                     # Fallback if response.json() failed (it shouldn't if 200)
+                     # or if content parsing failed
+                     print(f"DEBUG: Raw response text: {result_text[:200]}...")
+                     # Try parsing raw text if it wasn't valid OpenAI json
+                     parsed_result = json.loads(result_text)
+
+                
+                # Validate structure
+                if "scenes" in parsed_result and isinstance(parsed_result["scenes"], list):
+                    print(f"DEBUG: Successfully parsed {len(parsed_result['scenes'])} scenes")
+                    return parsed_result
+                else:
+                    print("DEBUG: Invalid JSON structure in response, checking keys...")
+                    if isinstance(parsed_result, dict):
+                        print(f"DEBUG: Keys found: {list(parsed_result.keys())}")
+                    return {"scenes": []}
+            else:
+                print(f"ERROR: Request failed with status {response.status_code}")
+                # print(f"ERROR: Response text: {response.text[:500]}")
+                return {"scenes": []}
+                    
+        except requests.exceptions.Timeout:
+            print("ERROR: Request timed out after 60 seconds")
+            return {"scenes": []}
         except Exception as e:
-            print(f"LLM Error (Pollinations): {e}")
-            # Fallback structure for UI testing if API fails
+            print(f"ERROR: LLM Error (Pollinations POST): {e}")
             return {"scenes": []}
 
     def generate_visual_queries_only(self, text_chunk):
