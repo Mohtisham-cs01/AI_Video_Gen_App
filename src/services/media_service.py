@@ -6,6 +6,7 @@ class MediaService:
     def __init__(self):
         self.pexels_api_key = Config.PEXELS_API_KEY
         self.headers = {"Authorization": self.pexels_api_key} if self.pexels_api_key else {}
+        self.pollinations_api_key = Config.POLLINATIONS_API_KEY
 
     def search_pexels(self, query: str, orientation="landscape", size="medium", type="video"):
         """
@@ -50,11 +51,16 @@ class MediaService:
         Generates an image using Pollinations.ai with specified dimensions.
         """
         try:
-            # Pollinations image URL format: https://image.pollinations.ai/prompt/{prompt}?width={width}&height={height}
-            url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(prompt)}?width={width}&height={height}&nologo=true"
-            print(f"Generating Pollinations image: {width}x{height}")
+            # Pollinations image URL format: https://gen.pollinations.ai/image/{prompt}?width={width}&height={height}&model={model}
+            model = Config.POLLINATIONS_MODEL #or "flux"
+            url = f"https://gen.pollinations.ai/image/{requests.utils.quote(prompt)}?width={width}&height={height}&model={model}"
+            print(f"Generating Pollinations image: {width}x{height} model={model}")
             
-            response = requests.get(url)
+            headers = {}
+            if self.pollinations_api_key:
+                headers["Authorization"] = f"Bearer {self.pollinations_api_key}"
+            
+            response = requests.get(url, headers=headers)
             response.raise_for_status()
             
             with open(output_path, 'wb') as f:

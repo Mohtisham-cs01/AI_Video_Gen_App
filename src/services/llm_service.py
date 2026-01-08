@@ -64,7 +64,7 @@ class LLMService:
             url = "https://gen.pollinations.ai/v1/chat/completions"
             
             payload = {
-                "model": "nova-micro", # User preferred model
+                "model": "deepseek", # User preferred model
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
