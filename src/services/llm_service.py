@@ -41,7 +41,7 @@ class LLMService:
     {available_sources_prompt}
     - 'image_prompt': Detailed prompt if source is 'pollinations'.
 
-    Don't put gap timing between scenes.
+    Scenes MUST be perfectly continuous: the first scene starts at the first word time, and every next scene starts EXACTLY at the previous scene's end_time.
     Return ONLY valid JSON. No markdown formatting."""
 
         user_prompt = f"""Script:
