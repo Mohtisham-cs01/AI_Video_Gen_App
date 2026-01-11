@@ -312,6 +312,15 @@ class App(ctk.CTk):
             cb.pack(pady=2, anchor="w", padx=10)
             self.source_checkboxes[value] = var
 
+        # Image Animation Toggle
+        self.animation_var = ctk.BooleanVar(value=Config.IMAGE_ANIMATION_ENABLED)
+        self.animation_cb = ctk.CTkCheckBox(
+            self.tab_settings,
+            text="Animate Image Scenes (Ken Burns Effect)",
+            variable=self.animation_var
+        )
+        self.animation_cb.pack(pady=10, anchor="w")
+
 
     def change_tts_service(self, choice):
         if choice == "Pollinations AI":
@@ -668,6 +677,10 @@ class App(ctk.CTk):
                  
             Config.ENABLED_MEDIA_SOURCES = selected_sources
             Config.save_key("ENABLED_MEDIA_SOURCES", ",".join(selected_sources))
+
+        if hasattr(self, 'animation_var'):
+            Config.IMAGE_ANIMATION_ENABLED = self.animation_var.get()
+            Config.save_key("IMAGE_ANIMATION_ENABLED", str(Config.IMAGE_ANIMATION_ENABLED))
 
 
     def on_closing(self):
