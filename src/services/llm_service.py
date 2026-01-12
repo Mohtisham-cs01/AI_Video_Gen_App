@@ -39,7 +39,7 @@ class LLMService:
     - 'visual_query': Search query for Pexels or DuckDuckGo.
     - 'media_source': Choose from: {json.dumps(enabled)}.
     {available_sources_prompt}
-    - 'image_prompt': Detailed prompt if source is 'pollinations'.
+    -  visual_query should be Detailed prompt if source is 'pollinations'.
 
     Scenes MUST be perfectly continuous: the first scene starts at the first word time, and every next scene starts EXACTLY at the previous scene's end_time.
     Return ONLY valid JSON. No markdown formatting."""

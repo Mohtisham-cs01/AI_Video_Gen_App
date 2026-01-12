@@ -8,6 +8,7 @@ import requests
 import mimetypes
 from src.config import Config
 import platform
+import random
 
 class VideoService:
     def __init__(self):
@@ -132,45 +133,113 @@ class VideoService:
     
     def apply_image_animation(self, clip, resolution=(1920, 1080)):
         """
-        Apply a professional Ken Burns / Slide effect to an image clip.
-        Slides from upward with a subtle zoom.
+        Apply a random professional Ken Burns effect (Pan/Zoom) to an image clip.
         """
         try:
             w, h = resolution
             duration = clip.duration
             
-            # 1. Scale up base clip slightly to have 'bleed' for movement
-            # We resize to 1.3 to have plenty of room for zoom and slide
-            clip = clip.resized(height=int(h * 1.3))
+            # 1. Scale up base clip to allow movement (Bleed area)
+            # We resize to 1.4x to have plenty of room for both vertical and horizontal pans
+            scale_factor = 1.4
             
-            # 2. Dynamic Zoom Calculation (Linear zoom from 100% to 115%)
-            def zoom_func(t):
-                return 1.0 + 0.15 * (t / duration)
+            # Calculate new dimensions preserving aspect ratio
+            # note: clip.resized(height=...) maintains aspect ratio
+            clip = clip.resized(height=int(h * scale_factor))
             
-            # Apply Zoom effect using resized with lambda (MoviePy 2.x supports this)
-            # Actually, MoviePy ImageClip resized with lambda can be tricky.
-            # A more robust way is to use a custom frame transition if needed, 
-            # but simple position movement is usually enough for "Professional" look if done right.
+            # Dimensions of the resized clip
+            cw, ch = clip.w, clip.h
             
-            # 3. Dynamic Position (Slide from Top to Center)
-            def pos_func(t):
-                # Start 10% from the top and slide down to center
-                # Since we are 1.3h, we have 0.3h extra. 
-                # Total pixel range = 0.3 * h
-                total_travel = 0.2 * h
-                start_offset = -0.2 * h
-                
-                # Ease out cubic for professional feel: 1 - (1 - x)^3
-                progress = t / duration
-                eased_progress = 1 - (1 - progress)**2 # Quadratic ease-out is smoother
-                
-                current_y = start_offset + (total_travel * eased_progress)
-                return ('center', int(current_y))
+            # Maximum allowed movement (offset) in pixels
+            max_x_move = (cw - w) // 2 
+            max_y_move = (ch - h) // 2
+            
+            # Select a random animation effect
+            effects = ['pan_left', 'pan_right', 'pan_up', 'pan_down', 'zoom_in', 'zoom_out']
+            effect = random.choice(effects)
+            
+            print(f"    - Applying effect: {effect}")
 
-            # Apply position movement
-            clip = clip.with_position(pos_func)
+            # Easing function (Quadratic Ease-Out)
+            def get_eased_progress(t):
+                p = t / duration
+                return 1 - (1 - p)**2
+
+            # Position calculators
+            def get_pos(t):
+                progress = get_eased_progress(t)
+                
+                # Default centered position
+                center_x = (w - cw) // 2
+                center_y = (h - ch) // 2
+                
+                x, y = center_x, center_y # Start at center (which implies cropping center)
+                                            # Wait, moviepy coords are top-left of the clip relative to bg
+                                            # We want to center the crop. 
+                                            # If clip is at (x,y), the visible part is -x, -y from clip's top-left
+                                            # Actually, simpler: 
+                                            # We want the clip CENTER to move relative to the frame CENTER.
+                                            # So we use ('center', 'center') logic effectively.
+                
+                # Let's calculate top-left coordinates (x, y) relative to canvas (0,0)
+                # To center the big clip on the small canvas:
+                # x = (w - cw) / 2
+                # y = (h - ch) / 2
+                
+                # Movement implies shifting away from this center
+                
+                if effect == 'pan_left':
+                    # Move Left: Image moves LEFT, so we see more of the RIGHT side.
+                    # Start: x + offset -> End: x - offset
+                    start_x = center_x + (max_x_move * 0.5)
+                    end_x = center_x - (max_x_move * 0.5)
+                    curr_x = start_x + (end_x - start_x) * progress
+                    return (int(curr_x), 'center')
+                    
+                elif effect == 'pan_right':
+                    # Move Right: Image moves RIGHT
+                    start_x = center_x - (max_x_move * 0.5)
+                    end_x = center_x + (max_x_move * 0.5)
+                    curr_x = start_x + (end_x - start_x) * progress
+                    return (int(curr_x), 'center')
+                    
+                elif effect == 'pan_up':
+                    # Move Up: Image moves UP
+                    start_y = center_y + (max_y_move * 0.5)
+                    end_y = center_y - (max_y_move * 0.5)
+                    curr_y = start_y + (end_y - start_y) * progress
+                    return ('center', int(curr_y))
+                    
+                elif effect == 'pan_down':
+                    # Move Down
+                    start_y = center_y - (max_y_move * 0.5)
+                    end_y = center_y + (max_y_move * 0.5)
+                    curr_y = start_y + (end_y - start_y) * progress
+                    return ('center', int(curr_y))
+                
+                elif 'zoom' in effect:
+                    # For zoom, we just center it. 
+                    # Real zoom requires resizing per frame which is expensive/complex in basic MoviePy.
+                    # We will simulate "Zoom" by a gentle forward movement (Pan Up+Left) 
+                    # OR we can just fallback to a slow Pan for now as true Zoom is hard with just position.
+                    # HOWEVER, we can do a 'fake' zoom by sliding diagonals.
+                    
+                    # Let's do a Diagonal Pan for "Zoom" effect feel
+                    if effect == 'zoom_in':
+                        # Slide Diagonally In (Top-Left to Center)
+                        s_x, e_x = center_x - max_x_move*0.3, center_x + max_x_move*0.3
+                        s_y, e_y = center_y - max_y_move*0.3, center_y + max_y_move*0.3
+                        return (int(s_x + (e_x-s_x)*progress), int(s_y + (e_y-s_y)*progress))
+                    else:
+                        # Zoom out roughly
+                        s_x, e_x = center_x + max_x_move*0.3, center_x - max_x_move*0.3
+                        s_y, e_y = center_y + max_y_move*0.3, center_y - max_y_move*0.3
+                        return (int(s_x + (e_x-s_x)*progress), int(s_y + (e_y-s_y)*progress))
+
+                return ('center', 'center')
+
+            return clip.with_position(get_pos)
             
-            return clip
         except Exception as e:
             print(f"Error applying image animation: {e}")
             return clip
