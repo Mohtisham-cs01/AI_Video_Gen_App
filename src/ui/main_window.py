@@ -285,6 +285,29 @@ class App(ctk.CTk):
         )
         self.tts_option.pack(fill="x", pady=5)
         self.tts_option.set("Pollinations AI")  # Default (Gemini TTS not working)
+        
+        # Pollinations Model Selection
+        self.model_label = ctk.CTkLabel(self.tab_settings, text="Pollinations Image Model:")
+        self.model_label.pack(pady=5, anchor="w")
+        
+        self.model_frame = ctk.CTkFrame(self.tab_settings, fg_color="transparent")
+        self.model_frame.pack(fill="x", pady=5)
+        
+        self.model_var = ctk.StringVar(value=Config.POLLINATIONS_MODEL)
+        self.model_option = ctk.CTkOptionMenu(
+            self.model_frame,
+            variable=self.model_var,
+            values=self._get_model_list_safe()
+        )
+        self.model_option.pack(side="left", padx=(0, 10))
+        
+        self.refresh_models_btn = ctk.CTkButton(
+            self.model_frame,
+            text="↻ Refresh",
+            width=80,
+            command=self.refresh_pollinations_models
+        )
+        self.refresh_models_btn.pack(side="left")
 
         # Media Sources Selection
         self.media_sources_label = ctk.CTkLabel(self.tab_settings, text="Enabled Media Sources (for AI):")
@@ -321,6 +344,31 @@ class App(ctk.CTk):
         )
         self.animation_cb.pack(pady=10, anchor="w")
 
+
+    def _get_model_list_safe(self):
+        """Helper to get models without blocking UI too long (though file read is fast)."""
+        models = self.media_service.get_pollinations_models()
+        return models if models else ["gptimage"] # Fallback
+
+    def refresh_pollinations_models(self):
+        """Fetch fresh models from API."""
+        self.status_label.configure(text="Refreshing models...", text_color="blue")
+        self.refresh_models_btn.configure(state="disabled")
+        
+        def _task():
+            return self.media_service.fetch_pollinations_models()
+            
+        def _done(result, error):
+            self.refresh_models_btn.configure(state="normal")
+            if error:
+                messagebox.showerror("Error", f"Failed to refresh models: {error}")
+                self.status_label.configure(text="Model refresh failed", text_color="red")
+            else:
+                self.model_option.configure(values=result)
+                self.status_label.configure(text="Models refreshed!", text_color="green")
+                messagebox.showinfo("Success", f"Found {len(result)} models.")
+        
+        self.task_manager.submit_task(_task, _done)
 
     def change_tts_service(self, choice):
         if choice == "Pollinations AI":
@@ -681,6 +729,10 @@ class App(ctk.CTk):
         if hasattr(self, 'animation_var'):
             Config.IMAGE_ANIMATION_ENABLED = self.animation_var.get()
             Config.save_key("IMAGE_ANIMATION_ENABLED", str(Config.IMAGE_ANIMATION_ENABLED))
+
+        if hasattr(self, 'model_var'):
+            Config.POLLINATIONS_MODEL = self.model_var.get()
+            Config.save_key("POLLINATIONS_MODEL", Config.POLLINATIONS_MODEL)
 
 
     def on_closing(self):

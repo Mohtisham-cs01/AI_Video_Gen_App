@@ -1,5 +1,6 @@
 import requests
 import os
+import json
 from ..config import Config
 
 class MediaService:
@@ -100,3 +101,43 @@ class MediaService:
         except Exception as e:
             print(f"DDG search error: {e}")
             return None
+
+    def fetch_pollinations_models(self):
+        """
+        Fetches available models from Pollinations API and saves to JSON file.
+        Returns the list of models.
+        """
+        url = "https://gen.pollinations.ai/image/models"
+        try:
+            print("Fetching Pollinations models...")
+            response = requests.get(url)
+            response.raise_for_status()
+            models_data = response.json()
+            
+            # Save to file
+            with open(Config.POLLINATIONS_MODELS_FILE, 'w') as f:
+                json.dump(models_data, f, indent=2)
+            
+            print(f"Saved {len(models_data)} models to {Config.POLLINATIONS_MODELS_FILE}")
+            return [m['name'] for m in models_data]
+            
+        except Exception as e:
+            print(f"Error fetching Pollinations models: {e}")
+            return []
+
+    def get_pollinations_models(self):
+        """
+        Returns list of available model names.
+        Reads from cache if available, otherwise fetches.
+        """
+        if os.path.exists(Config.POLLINATIONS_MODELS_FILE):
+            try:
+                with open(Config.POLLINATIONS_MODELS_FILE, 'r') as f:
+                    models_data = json.load(f)
+                    return [m['name'] for m in models_data]
+            except Exception as e:
+                print(f"Error reading models file: {e}")
+        
+        # Fallback: fetch fresh
+        return self.fetch_pollinations_models()
+

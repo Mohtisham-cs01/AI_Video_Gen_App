@@ -8,10 +8,11 @@ class Config:
     POLLINATIONS_API_KEY = os.getenv("POLLINATIONS_API_KEY")
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-    POLLINATIONS_MODEL = "turbo"
+    POLLINATIONS_MODEL = "gptimage"
     IMAGE_ANIMATION_ENABLED = os.getenv("IMAGE_ANIMATION_ENABLED", "True").lower() == "true"
     WHISPER_MODEL_SIZE = "medium"
     OUTPUT_DIR = os.path.join(os.getcwd(), "output")
+    POLLINATIONS_MODELS_FILE = os.path.join(os.getcwd(), "pollinations_models.json")
     
     # Default enabled sources
     ENABLED_MEDIA_SOURCES = os.getenv("ENABLED_MEDIA_SOURCES", "pexels,pollinations,duckduckgo").split(",")
