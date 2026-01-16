@@ -258,6 +258,14 @@ class App(ctk.CTk):
         if Config.PEXELS_API_KEY:
             self.api_key_entry.insert(0, Config.PEXELS_API_KEY)
 
+        # Pollinations API Key (Protected)
+        self.pollinations_key_label = ctk.CTkLabel(self.tab_settings, text="Pollinations API Key (Required for AI Audio):")
+        self.pollinations_key_label.pack(pady=5, anchor="w")
+        self.pollinations_key_entry = ctk.CTkEntry(self.tab_settings, show="*")
+        self.pollinations_key_entry.pack(fill="x", pady=5)
+        if Config.POLLINATIONS_API_KEY:
+            self.pollinations_key_entry.insert(0, Config.POLLINATIONS_API_KEY)
+
         # Gemini API Key
         self.gemini_key_label = ctk.CTkLabel(self.tab_settings, text="Gemini API Key (Optional):")
         self.gemini_key_label.pack(pady=5, anchor="w")
@@ -704,6 +712,10 @@ class App(ctk.CTk):
         if hasattr(self, 'api_key_entry'):
             val = self.api_key_entry.get().strip()
             if val: Config.save_key("PEXELS_API_KEY", val)
+            
+        if hasattr(self, 'pollinations_key_entry'):
+            val = self.pollinations_key_entry.get().strip()
+            if val: Config.save_key("POLLINATIONS_API_KEY", val)
             
         if hasattr(self, 'gemini_key_entry'):
             val = self.gemini_key_entry.get().strip()

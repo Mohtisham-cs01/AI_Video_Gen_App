@@ -17,32 +17,98 @@ class LLMService:
         available_sources_prompt = ""
         enabled = Config.ENABLED_MEDIA_SOURCES
         
-        if "pexels" in enabled:
-            available_sources_prompt += '\n* "pexels": Use for high-quality stock footage/photos.'
-        if "duckduckgo" in enabled:
-            available_sources_prompt += '\n* "duckduckgo": Use for specific real-world entities, famous places, or when stock footage might be missing.'
-        if "pollinations" in enabled:
-            available_sources_prompt += '\n* "pollinations": Use for abstract, fantasy, or very specific generated art.'
+        # if "pexels" in enabled:
+        #     available_sources_prompt += '\n* "pexels": Use for high-quality stock footage/photos.'
+        # if "duckduckgo" in enabled:
+        #     available_sources_prompt += '\n* "duckduckgo": Use for specific real-world entities, famous places, or when stock footage might be missing.'
+        # if "pollinations" in enabled:
+        #     available_sources_prompt += '\n* "pollinations": Use for abstract, fantasy, or very specific generated art.'
             
-        system_prompt = f"""You are an expert video director. Analyze the script and word timings to create a production plan.
+        if "pexels" in enabled:
+            available_sources_prompt += """
+        - If media_source is "pexels":
+        - visual_query MUST be a short, concrete stock search query
+        - No artistic or cinematic language
+        """
 
-    Input:
-    1. Script.
-    2. Word Timings (JSON).
+        if "duckduckgo" in enabled:
+            available_sources_prompt += """
+        - If media_source is "duckduckgo":
+        - visual_query MUST be a factual real-world search query
+        - Used for landmarks, people, events, places
+        """
 
-    Output:
-    A JSON object with a 'scenes' list. Each scene:
-    - 'id': int
-    - 'text': Exact phrase.
-    - 'start_time': float
-    - 'end_time': float
-    - 'visual_query': Search query for Pexels or DuckDuckGo.
-    - 'media_source': Choose from: {json.dumps(enabled)}.
-    {available_sources_prompt}
-    -  visual_query should be Detailed prompt if source is 'pollinations'.
+        if "pollinations" in enabled:
+            available_sources_prompt += """
+        - If media_source is "pollinations":
+        - visual_query MUST be a detailed AI image generation prompt
+        - Describe environment, mood, lighting, camera angle, style
+        - Cinematic and context-aware
+        """
 
-    Scenes MUST be perfectly continuous: the first scene starts at the first word time, and every next scene starts EXACTLY at the previous scene's end_time.
-    Return ONLY valid JSON. No markdown formatting."""
+
+        system_prompt = f"""
+                You are an expert video director.
+
+                TASK:
+                Convert the narration script and word-level timings into a precise video production plan.
+
+                INPUT:
+                1. Script
+                2. Word Timings (JSON)
+
+                OUTPUT:
+                Return ONLY valid JSON with key "scenes".
+
+                Each scene MUST include:
+                - id (int)
+                - text (exact spoken phrase)
+                - start_time (float)
+                - end_time (float)
+                - media_source (one of {json.dumps(enabled)})
+                - visual_query (string)
+
+                TIMING RULES:
+                - First scene starts at first word timestamp
+                - Every next scene starts EXACTLY at previous scene’s end_time
+                - No gaps, no overlaps
+                - Timings must come strictly from word timings
+
+                MEDIA RULES:
+                - media_source MUST be chosen ONLY from enabled sources: {json.dumps(enabled)}
+                - Use source-specific behavior exactly as defined below
+
+                SOURCE-SPECIFIC INSTRUCTIONS:
+                {available_sources_prompt}
+
+                OUTPUT RULES:
+                - JSON ONLY
+                - No markdown
+                - No explanations
+                - No extra text
+                """
+
+    #     system_prompt = f"""You are an expert video director. Analyze the script and word timings to create a production plan.
+
+    # Input:
+    # 1. Script.
+    # 2. Word Timings (JSON).
+
+    # Output:
+    # A JSON object with a 'scenes' list. Each scene:
+    # - 'id': int
+    # - 'text': Exact phrase.
+    # - 'start_time': float
+    # - 'end_time': float
+    # - 'visual_query': Search query for Pexels or DuckDuckGo.
+    # - 'media_source': Choose from: {json.dumps(enabled)}.
+    # {available_sources_prompt}
+    # -  visual_query should be Detailed prompt if source is 'pollinations'.
+
+    # Scenes MUST be perfectly continuous: the first scene starts at the first word time, and every next scene starts EXACTLY at the previous scene's end_time.
+    # Return ONLY valid JSON. No markdown formatting."""
+
+
 
         user_prompt = f"""Script:
     {script_text}
