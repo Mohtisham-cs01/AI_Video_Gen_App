@@ -2,6 +2,8 @@ import requests
 import os
 import time
 import urllib.parse
+import json
+import base64
 from abc import ABC, abstractmethod
 import subprocess
 from pydub import AudioSegment
@@ -13,14 +15,15 @@ class TTSService(ABC):
         pass
 
 class PollinationsTTS(TTSService):
-    def generate_audio(self, text: str, output_path: str, voice: str = "openai-audio"):
+    def generate_audio(self, text: str, output_path: str, voice: str = "alloy"):
         """
         Generates audio using Pollinations.ai API with chunking support for long scripts.
         """
         print(f"Generating audio for script length: {len(text)}")
         
         # 1. Split script into chunks
-        chunks = self._split_script_into_chunks(text)
+        # chunks = self._split_script_into_chunks(text)
+        chunks = [text]
         if not chunks:
             raise ValueError("Script is empty or could not be split.")
             
@@ -141,39 +144,61 @@ class PollinationsTTS(TTSService):
         return True
 
     def _generate_single_chunk(self, text, output_path, voice, max_retries=3):
-        full_prompt = f"Say this in English: {text}"
-        encoded_prompt = urllib.parse.quote(full_prompt)
+        url = "https://gen.pollinations.ai/v1/chat/completions"
         
-        url = f"https://text.pollinations.ai/{encoded_prompt}?model={voice}&voice=nova"
-        
-        headers = {}
+        headers = {
+            "Content-Type": "application/json"
+        }
         if Config.POLLINATIONS_API_KEY:
             headers["Authorization"] = f"Bearer {Config.POLLINATIONS_API_KEY}"
+            
+        payload = {
+            "model": "openai-audio",
+            "messages": [{"role": "user", "content": text}],
+            "modalities": ["text", "audio"],
+            "audio": {"voice": voice, "format": "mp3"}
+        }
             
         for attempt in range(max_retries):
             try:
                 print(f"  Attempt {attempt + 1}/{max_retries}")
-                response = requests.get(url, headers=headers, timeout=60)
-                response.raise_for_status()
+                response = requests.post(url, headers=headers, json=payload, timeout=60)
                 
-                if not self._validate_audio_content(response.content):
-                    print(f"  ✗ Response doesn't contain valid audio")
-                    try:
-                        error_text = response.content.decode('utf-8', errors='ignore')[:200]
-                        print(f"  Response preview: {error_text}")
-                    except:
-                        print(f"  Response size: {len(response.content)} bytes")
-                    
+                if response.status_code != 200:
+                    print(f"  ✗ API Error ({response.status_code}): {response.text[:200]}")
                     if attempt < max_retries - 1:
-                        print(f"  Retrying...")
+                        time.sleep(2)
+                        continue
+                    else:
+                        return False
+                
+                data = response.json()
+                
+                # Extract audio data
+                audio_content = None
+                try:
+                    audio_content = data['choices'][0]['message']['audio']['data']
+                except (KeyError, IndexError) as e:
+                    print(f"  ✗ Unexpected response structure: {e}")
+                    # Try to see if it's in a different format or just text
+                    if 'choices' in data and data['choices']:
+                        print(f"  Message content: {data['choices'][0].get('message', {}).get('content')}")
+                
+                if not audio_content:
+                    print(f"  ✗ No audio data found in response")
+                    if attempt < max_retries - 1:
                         time.sleep(2)
                         continue
                     else:
                         return False
 
+                # Decode base64
+                audio_bytes = base64.b64decode(audio_content)
+                
                 with open(output_path, 'wb') as f:
-                    f.write(response.content)
-                print(f"  ✓ Chunk successfully saved: {output_path} ({len(response.content)} bytes)")
+                    f.write(audio_bytes)
+                    
+                print(f"  ✓ Chunk successfully saved: {output_path} ({len(audio_bytes)} bytes)")
                 return True
                 
             except Exception as e:
