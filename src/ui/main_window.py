@@ -250,44 +250,48 @@ class App(ctk.CTk):
         self.scenes_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
     def _setup_settings_tab(self):
+        # Create Scrollable Frame covering the entire tab
+        self.settings_scroll_frame = ctk.CTkScrollableFrame(self.tab_settings)
+        self.settings_scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
         # Pexels API Key
-        self.api_key_label = ctk.CTkLabel(self.tab_settings, text="Pexels API Key:")
+        self.api_key_label = ctk.CTkLabel(self.settings_scroll_frame, text="Pexels API Key:")
         self.api_key_label.pack(pady=5, anchor="w")
-        self.api_key_entry = ctk.CTkEntry(self.tab_settings, show="*")
+        self.api_key_entry = ctk.CTkEntry(self.settings_scroll_frame, show="*")
         self.api_key_entry.pack(fill="x", pady=5)
         if Config.PEXELS_API_KEY:
             self.api_key_entry.insert(0, Config.PEXELS_API_KEY)
 
         # Pollinations API Key (Protected)
-        self.pollinations_key_label = ctk.CTkLabel(self.tab_settings, text="Pollinations API Key (Required for AI Audio):")
+        self.pollinations_key_label = ctk.CTkLabel(self.settings_scroll_frame, text="Pollinations API Key (Required for AI Audio):")
         self.pollinations_key_label.pack(pady=5, anchor="w")
-        self.pollinations_key_entry = ctk.CTkEntry(self.tab_settings, show="*")
+        self.pollinations_key_entry = ctk.CTkEntry(self.settings_scroll_frame, show="*")
         self.pollinations_key_entry.pack(fill="x", pady=5)
         if Config.POLLINATIONS_API_KEY:
             self.pollinations_key_entry.insert(0, Config.POLLINATIONS_API_KEY)
 
         # Gemini API Key
-        self.gemini_key_label = ctk.CTkLabel(self.tab_settings, text="Gemini API Key (Optional):")
+        self.gemini_key_label = ctk.CTkLabel(self.settings_scroll_frame, text="Gemini API Key (Optional):")
         self.gemini_key_label.pack(pady=5, anchor="w")
-        self.gemini_key_entry = ctk.CTkEntry(self.tab_settings, show="*")
+        self.gemini_key_entry = ctk.CTkEntry(self.settings_scroll_frame, show="*")
         self.gemini_key_entry.pack(fill="x", pady=5)
         if Config.GEMINI_API_KEY:
             self.gemini_key_entry.insert(0, Config.GEMINI_API_KEY)
 
         # Groq API Key
-        self.groq_key_label = ctk.CTkLabel(self.tab_settings, text="Groq API Key (Optional, for fast transcription):")
+        self.groq_key_label = ctk.CTkLabel(self.settings_scroll_frame, text="Groq API Key (Optional, for fast transcription):")
         self.groq_key_label.pack(pady=5, anchor="w")
-        self.groq_key_entry = ctk.CTkEntry(self.tab_settings, show="*")
+        self.groq_key_entry = ctk.CTkEntry(self.settings_scroll_frame, show="*")
         self.groq_key_entry.pack(fill="x", pady=5)
         if Config.GROQ_API_KEY:
             self.groq_key_entry.insert(0, Config.GROQ_API_KEY)
 
         # TTS Service Selection
-        self.tts_label = ctk.CTkLabel(self.tab_settings, text="TTS Service:")
+        self.tts_label = ctk.CTkLabel(self.settings_scroll_frame, text="TTS Service:")
         self.tts_label.pack(pady=5, anchor="w")
         
         self.tts_option = ctk.CTkOptionMenu(
-            self.tab_settings, 
+            self.settings_scroll_frame, 
             values=["Pollinations AI", "Gemini TTS"],
             command=self.change_tts_service
         )
@@ -295,10 +299,10 @@ class App(ctk.CTk):
         self.tts_option.set("Pollinations AI")  # Default (Gemini TTS not working)
         
         # Pollinations Model Selection
-        self.model_label = ctk.CTkLabel(self.tab_settings, text="Pollinations Image Model:")
+        self.model_label = ctk.CTkLabel(self.settings_scroll_frame, text="Pollinations Image Model:")
         self.model_label.pack(pady=5, anchor="w")
         
-        self.model_frame = ctk.CTkFrame(self.tab_settings, fg_color="transparent")
+        self.model_frame = ctk.CTkFrame(self.settings_scroll_frame, fg_color="transparent")
         self.model_frame.pack(fill="x", pady=5)
         
         self.model_var = ctk.StringVar(value=Config.POLLINATIONS_MODEL)
@@ -318,7 +322,7 @@ class App(ctk.CTk):
         self.refresh_models_btn.pack(side="left")
 
         # Media Sources Selection
-        self.media_sources_label = ctk.CTkLabel(self.tab_settings, text="Enabled Media Sources (for AI):")
+        self.media_sources_label = ctk.CTkLabel(self.settings_scroll_frame, text="Enabled Media Sources (for AI):")
         self.media_sources_label.pack(pady=5, anchor="w")
         
         self.source_checkboxes = {}
@@ -328,7 +332,7 @@ class App(ctk.CTk):
             ("Search Engine (DuckDuckGo)", "duckduckgo")
         ]
         
-        self.sources_frame = ctk.CTkFrame(self.tab_settings)
+        self.sources_frame = ctk.CTkFrame(self.settings_scroll_frame)
         self.sources_frame.pack(fill="x", pady=5)
         
         for label, value in sources:
@@ -346,7 +350,7 @@ class App(ctk.CTk):
         # Image Animation Toggle
         self.animation_var = ctk.BooleanVar(value=Config.IMAGE_ANIMATION_ENABLED)
         self.animation_cb = ctk.CTkCheckBox(
-            self.tab_settings,
+            self.settings_scroll_frame,
             text="Animate Image Scenes (Ken Burns Effect)",
             variable=self.animation_var
         )
