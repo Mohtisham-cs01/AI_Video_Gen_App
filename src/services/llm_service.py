@@ -17,13 +17,6 @@ class LLMService:
         available_sources_prompt = ""
         enabled = Config.ENABLED_MEDIA_SOURCES
         
-        # if "pexels" in enabled:
-        #     available_sources_prompt += '\n* "pexels": Use for high-quality stock footage/photos.'
-        # if "duckduckgo" in enabled:
-        #     available_sources_prompt += '\n* "duckduckgo": Use for specific real-world entities, famous places, or when stock footage might be missing.'
-        # if "pollinations" in enabled:
-        #     available_sources_prompt += '\n* "pollinations": Use for abstract, fantasy, or very specific generated art.'
-            
         if "pexels" in enabled:
             available_sources_prompt += """
         - If media_source is "pexels":
@@ -60,6 +53,10 @@ class LLMService:
                 OUTPUT:
                 Return ONLY valid JSON with key "scenes".
 
+                Do not create overly long scenes.
+                Scene duration must be naturally derived from narration flow, not fixed seconds.
+                
+
                 Each scene MUST include:
                 - id (int)
                 - text (exact spoken phrase)
@@ -77,6 +74,7 @@ class LLMService:
                 MEDIA RULES:
                 - media_source MUST be chosen ONLY from enabled sources: {json.dumps(enabled)}
                 - Use source-specific behavior exactly as defined below
+                - 
 
                 SOURCE-SPECIFIC INSTRUCTIONS:
                 {available_sources_prompt}
@@ -87,26 +85,6 @@ class LLMService:
                 - No explanations
                 - No extra text
                 """
-
-    #     system_prompt = f"""You are an expert video director. Analyze the script and word timings to create a production plan.
-
-    # Input:
-    # 1. Script.
-    # 2. Word Timings (JSON).
-
-    # Output:
-    # A JSON object with a 'scenes' list. Each scene:
-    # - 'id': int
-    # - 'text': Exact phrase.
-    # - 'start_time': float
-    # - 'end_time': float
-    # - 'visual_query': Search query for Pexels or DuckDuckGo.
-    # - 'media_source': Choose from: {json.dumps(enabled)}.
-    # {available_sources_prompt}
-    # -  visual_query should be Detailed prompt if source is 'pollinations'.
-
-    # Scenes MUST be perfectly continuous: the first scene starts at the first word time, and every next scene starts EXACTLY at the previous scene's end_time.
-    # Return ONLY valid JSON. No markdown formatting."""
 
 
 
