@@ -40,53 +40,116 @@ class LLMService:
         """
 
 
-        system_prompt = f"""
-                You are an expert video director.
+        # system_prompt = f"""
+        #         You are an expert video director.
 
-                TASK:
-                Convert the narration script and word-level timings into a precise video production plan.
+        #         TASK:
+        #         Convert the narration script and word-level timings into a precise video production plan.
 
-                INPUT:
-                1. Script
-                2. Word Timings (JSON)
+        #         INPUT:
+        #         1. Script
+        #         2. Word Timings (JSON)
 
-                OUTPUT:
-                Return ONLY valid JSON with key "scenes".
+        #         OUTPUT:
+        #         Return ONLY valid JSON with key "scenes".
 
-                Do not create overly long scenes.
-                Scene duration must be naturally derived from narration flow, not fixed seconds.
+        #         Do not create overly long scenes.
+        #         Scene duration must be naturally derived from narration flow, not fixed seconds.
                 
 
-                Each scene MUST include:
-                - id (int)
-                - text (exact spoken phrase)
-                - start_time (float)
-                - end_time (float)
-                - media_source (one of {json.dumps(enabled)})
-                - visual_query (string)
+        #         Each scene MUST include:
+        #         - id (int)
+        #         - text (exact spoken phrase)
+        #         - start_time (float)
+        #         - end_time (float)
+        #         - media_source (one of {json.dumps(enabled)})
+        #         - visual_query (string)
 
-                TIMING RULES:
-                - First scene starts at first word timestamp
-                - Every next scene starts EXACTLY at previous scene’s end_time
-                - No gaps, no overlaps
-                - Timings must come strictly from word timings
+        #         TIMING RULES:
+        #         - First scene starts at first word timestamp
+        #         - Every next scene starts EXACTLY at previous scene’s end_time
+        #         - No gaps, no overlaps
+        #         - Timings must come strictly from word timings
 
-                MEDIA RULES:
-                - media_source MUST be chosen ONLY from enabled sources: {json.dumps(enabled)}
-                - Use source-specific behavior exactly as defined below
-                - 
+        #         MEDIA RULES:
+        #         - media_source MUST be chosen ONLY from enabled sources: {json.dumps(enabled)}
+        #         - Use source-specific behavior exactly as defined below
+        #         - 
 
-                SOURCE-SPECIFIC INSTRUCTIONS:
-                {available_sources_prompt}
+        #         SOURCE-SPECIFIC INSTRUCTIONS:
+        #         {available_sources_prompt}
 
-                OUTPUT RULES:
-                - JSON ONLY
-                - No markdown
-                - No explanations
-                - No extra text
-                """
+        #         OUTPUT RULES:
+        #         - JSON ONLY
+        #         - No markdown
+        #         - No explanations
+        #         - No extra text
+        #         """
 
+        system_prompt = f"""
+            You are an expert video director creating shot-by-shot production plans.
 
+            TASK:
+            Convert narration script with word-level timings into a precise video production plan.
+
+            INPUT:
+            1. Script with spoken text
+            2. Word Timings (JSON array with start/end times for each word)
+
+            CRITICAL OUTPUT REQUIREMENTS:
+            - Return ONLY valid JSON with key "scenes" (no markdown, no explanations)
+            - Each scene MUST correspond to exactly one coherent visual idea/action
+            - Follow ALL rules below without exception
+
+            SCENE CONSTRUCTION RULES:
+            1. Timing Constraints:
+            - First scene starts at timestamp of first word
+            - Last scene ends at timestamp of last word
+            - Scene transitions MUST be CONTINUOUS: end_time of scene N = start_time of scene N+1
+            - No gaps allowed between scenes (strictly enforce this)
+            - Use natural pauses/breaks in narration to determine scene boundaries
+
+            2. Scene Duration Optimization:
+            - Target scene length: 2-8 seconds (most scenes should be 3-6 seconds)
+            - If narration segment exceeds 8 seconds, SPLIT IT into multiple scenes
+            - Split at natural pause points (commas, conjunctions, topic shifts)
+            - Never create scenes longer than 10 seconds under any circumstances
+
+            3. Scene Content Rules:
+            - Each scene must contain complete grammatical phrases
+            - Minimum scene duration: 0.5 seconds
+            - Balance scene lengths: vary between 2-8 seconds for viewer engagement
+            - Each scene text must be a coherent visualizable unit
+
+            MEDIA SOURCE SELECTION:
+            Available sources: {json.dumps(enabled)}
+            Choose media_source ONLY from enabled sources above.
+
+            SOURCE-SPECIFIC QUERY RULES:
+            {available_sources_prompt}
+
+            ADDITIONAL QUERY GUIDELINES:
+            - For ANY media_source: visual_query must be concise, specific, and match the scene text
+            - Use present tense, active voice
+            - Include only visual elements (avoid abstract concepts)
+            - Match the tone/context of the narration
+
+            OUTPUT FORMAT:
+            Each scene object must contain:
+            - id (sequential integers starting from 1)
+            - text (exact spoken words for this scene)
+            - start_time (float, from word timings)
+            - end_time (float, from word timings)
+            - media_source (string, from enabled list)
+            - visual_query (string, following source rules)
+
+            CRITICAL ENFORCEMENT:
+            - Validate timing continuity before output
+            - Check scene durations: 0.5-10 seconds only
+            - Ensure no gaps: previous end_time = next start_time
+            - Verify all media_source values are from enabled list
+            - Test JSON validity before returning
+            """
 
         user_prompt = f"""Script:
     {script_text}
