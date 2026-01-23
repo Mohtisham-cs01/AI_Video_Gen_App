@@ -86,80 +86,59 @@ class LLMService:
         #         - No extra text
         #         """
 
-        system_prompt = f"""
-            You are an expert video director creating shot-by-shot production plans.
+        # Combine instructions and data into a single robust prompt
+        combined_prompt = f"""
+You are a professional video editor and director. Your goal is to turn a narration script into a perfectly timed video plan.
 
-            TASK:
-            Convert narration script with word-level timings into a precise video production plan.
+### INPUT DATA
+1. **Script**:
+{script_text}
 
-            INPUT:
-            1. Script with spoken text
-            2. Word Timings (JSON array with start/end times for each word)
+2. **Word-Level Timings** (JSON):
+{json.dumps(word_subtitles)[:15000]}
 
-            CRITICAL OUTPUT REQUIREMENTS:
-            - Return ONLY valid JSON with key "scenes" (no markdown, no explanations)
-            - Each scene MUST correspond to exactly one coherent visual idea/action
-            - Follow ALL rules below without exception
+### YOUR TASK
+Generate a JSON response containing a list of video scenes.
+Each scene must cover a specific segment of the script.
 
-            SCENE CONSTRUCTION RULES:
-            1. Timing Constraints:
-            - First scene starts at timestamp of first word
-            - Last scene ends at timestamp of last word
-            - Scene transitions MUST be CONTINUOUS: end_time of scene N = start_time of scene N+1
-            - No gaps allowed between scenes (strictly enforce this)
-            - Use natural pauses/breaks in narration to determine scene boundaries
+### CRITICAL TIMING RULES (MUST FOLLOW)
+1. **NO GAPS**: The `start_time` of Scene N must EXACTLY match the `end_time` of Scene N-1.
+2. **FULL COVERAGE**: The first scene starts at the first word's start time. The last scene ends at the last word's end time.
+3. **DURATION LIMIT**: 
+   - Ideal scene length: **3 to 7 seconds**.
+   - Maximum scene length: **10 seconds** (Absolute Limit).
+   - If a legitimate sentence/segment is longer than 10 seconds, **YOU MUST SPLIT IT** into two visual scenes.
+4. **PACING**: Vary scene lengths. Don't make them all exactly 5 seconds. Use the flow of the speech.
 
-            2. Scene Duration Optimization:
-            - Target scene length: 2-8 seconds (most scenes should be 3-6 seconds)
-            - If narration segment exceeds 8 seconds, SPLIT IT into multiple scenes
-            - Split at natural pause points (commas, conjunctions, topic shifts)
-            - Never create scenes longer than 10 seconds under any circumstances
+### MEDIA SOURCE RULES
+Select `media_source` ONLY from: {json.dumps(enabled)}
+{available_sources_prompt}
 
-            3. Scene Content Rules:
-            - Each scene must contain complete grammatical phrases
-            - Minimum scene duration: 0.5 seconds
-            - Balance scene lengths: vary between 2-8 seconds for viewer engagement
-            - Each scene text must be a coherent visualizable unit
+### OUTPUT FORMAT
+Return strictly valid JSON with a single key "scenes".
+Example:
+{{
+  "scenes": [
+    {{
+      "id": 1,
+      "text": "The quick brown fox",
+      "start_time": 0.0,
+      "end_time": 3.5,
+      "media_source": "pexels",
+      "visual_query": "red fox running in autumn forest close up"
+    }},
+    {{
+      "id": 2,
+      "text": "jumps over the lazy dog.",
+      "start_time": 3.5,
+      "end_time": 6.2,
+      "media_source": "pollinations",
+      "visual_query": "lazy sleeping dog in sunlight, cinematic 4k"
+    }}
+  ]
+}}
+"""
 
-            MEDIA SOURCE SELECTION:
-            Available sources: {json.dumps(enabled)}
-            Choose media_source ONLY from enabled sources above.
-
-            SOURCE-SPECIFIC QUERY RULES:
-            {available_sources_prompt}
-
-            ADDITIONAL QUERY GUIDELINES:
-            - For ANY media_source: visual_query must be concise, specific, and match the scene text
-            - Use present tense, active voice
-            - Include only visual elements (avoid abstract concepts)
-            - Match the tone/context of the narration
-
-            OUTPUT FORMAT:
-            Each scene object must contain:
-            - id (sequential integers starting from 1)
-            - text (exact spoken words for this scene)
-            - start_time (float, from word timings)
-            - end_time (float, from word timings)
-            - media_source (string, from enabled list)
-            - visual_query (string, following source rules)
-
-            CRITICAL ENFORCEMENT:
-            - Validate timing continuity before output
-            - Check scene durations: 0.5-10 seconds only
-            - Ensure no gaps: previous end_time = next start_time
-            - Verify all media_source values are from enabled list
-            - Test JSON validity before returning
-            """
-
-        user_prompt = f"""Script:
-    {script_text}
-
-    Word Timings:
-    {json.dumps(word_subtitles)[:15000]}"""
-
-        # Combine system and user prompts are not needed for chat endpoint, but we keep them for logic
-        # full_prompt = f"{system_prompt}\n\n{user_prompt}" 
-        
         try:
             headers = {
                 "Content-Type": "application/json"
@@ -167,22 +146,21 @@ class LLMService:
             if Config.POLLINATIONS_API_KEY:
                 headers["Authorization"] = f"Bearer {Config.POLLINATIONS_API_KEY}"
             
-            # Use Unified API with OpenAI-compatible Chat Endpoint for reliability (POST)
+            # Use Unified API with OpenAI-compatible Chat Endpoint
             url = "https://gen.pollinations.ai/v1/chat/completions"
             
             payload = {
-                "model": "deepseek", # User preferred model
+                "model": "openai-large", # Using 'deepseek' as requested or default reliable model
                 "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": combined_prompt}
                 ],
-                "json": "true"  # Pollinations specific parameter for JSON mode
+                "json": True  # Pollinations specific parameter for JSON mode
             }
             
             print(f"DEBUG: Sending POST request to {url}")
             # print(f"DEBUG: Payload model: {payload['model']}")
             
-            response = requests.post(url, headers=headers, json=payload, timeout=60)
+            response = requests.post(url, headers=headers, json=payload, timeout=120)
             
             print(f"DEBUG: Response status: {response.status_code}")
             
