@@ -1,6 +1,8 @@
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 import os
+import json
+from datetime import datetime
 import threading
 from ..services.audio_service import get_tts_service, AudioExtractor
 from ..services.subtitle_service import SubtitleService
@@ -504,7 +506,7 @@ class App(ctk.CTk):
         self.task_manager.submit_task(
             self.llm_service.segment_script_and_generate_queries,
             self._on_scenes_generated,
-            script,
+            script, 
             optimized_subtitles
         )
 
@@ -515,6 +517,9 @@ class App(ctk.CTk):
             return
 
         self.scenes = result.get('scenes', [])
+        #save the scenes to a json file with current time and date
+        with open(os.path.join(Config.OUTPUT_DIR, "scenes_llm_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json"), "w") as f:
+            json.dump(self.scenes, f)
         # Initially, media_url/media_path is None
         for scene in self.scenes:
             scene['media_url'] = None
