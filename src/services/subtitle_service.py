@@ -87,7 +87,7 @@ class SubtitleService:
         
         # 1. Save Segments JSON
         with open(base_path + "_segments.json", 'w', encoding='utf-8') as f:
-            json.dump(segments, f, indent=2)
+            json.dump(segments, f, indent=2, ensure_ascii=False)
             
         # 2. Save Words JSON (Flat list)
         words = []
@@ -96,7 +96,7 @@ class SubtitleService:
                 words.extend(seg["words"])
         
         with open(base_path + "_words.json", 'w', encoding='utf-8') as f:
-            json.dump(words, f, indent=2)
+            json.dump(words, f, indent=2, ensure_ascii=False)
             
         # 3. Save SRT
         srt_content = segments_to_srt(segments)
