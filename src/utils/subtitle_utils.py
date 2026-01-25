@@ -33,3 +33,29 @@ def optimize_subtitles_for_llm(subtitles: List[Dict[str, Any]]) -> List[List[Uni
             optimized_subtitles.append([word, start_sec, end_sec])
             
     return optimized_subtitles
+
+def float_to_srt_time_format(d_seconds: float) -> str:
+    """
+    Convert seconds (float) to SRT time format: HH:MM:SS,mmm
+    """
+    seconds = int(d_seconds)
+    microseconds = int((d_seconds - seconds) * 1000)
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d},{microseconds:03d}"
+
+def segments_to_srt(segments: List[Dict[str, Any]]) -> str:
+    """
+    Convert a list of segment dicts to SRT formatted string.
+    Each segment is expected to have 'start', 'end', and 'text'.
+    """
+    srt_content = ""
+    for i, segment in enumerate(segments, start=1):
+        start_time = float_to_srt_time_format(segment.get('start', 0))
+        end_time = float_to_srt_time_format(segment.get('end', 0))
+        text = segment.get('text', '').strip()
+        
+        srt_content += f"{i}\n{start_time} --> {end_time}\n{text}\n\n"
+    
+    return srt_content

@@ -5,6 +5,8 @@ import requests
 import whisperx
 from ..config import Config
 
+from ..utils.subtitle_utils import segments_to_srt
+
 class SubtitleService:
     def __init__(self, model_size="base", device=None):
         self.model_size = Config.WHISPER_MODEL_SIZE or model_size
@@ -15,20 +17,32 @@ class SubtitleService:
         """
         Generates subtitles using Groq API (if key available) or fallback to WhisperX.
         Returns the segments with word timings.
+        Saves SRT, Segments JSON, and Words JSON to disk.
         """
+        segments = []
+        
         # Try Groq API first if key exists
         if Config.GROQ_API_KEY:
             try:
                 print("Attempting to use Groq Whisper API...")
                 segments = self._generate_groq_subtitles(audio_path)
-                if segments:
-                    return segments
             except Exception as e:
                 print(f"Groq API failed: {e}")
                 print("Falling back to local WhisperX...")
+                segments = None
         else:
              print("No Groq API key found. Using local WhisperX...")
 
+        # Fallback to local
+        if not segments:
+            segments = self._generate_local_whisperx(audio_path)
+
+        if segments:
+            self._save_outputs(audio_path, segments)
+
+        return segments
+
+    def _generate_local_whisperx(self, audio_path: str):
         print(f"Loading WhisperX model: {self.model_size} on {self.device} ({self.compute_type})...")
         
         try:
@@ -61,17 +75,37 @@ class SubtitleService:
                 self.device,
                 return_char_alignments=False
             )
-            
-            # Save JSON for debugging/reference
-            json_output_path = audio_path + ".json"
-            with open(json_output_path, 'w', encoding='utf-8') as f:
-                json.dump(result["segments"], f, indent=2)
-                
             return result["segments"]
 
         except Exception as e:
             print(f"WhisperX error: {e}")
             raise
+
+    def _save_outputs(self, audio_path: str, segments: list):
+        """Save SRT, Segments JSON, and Words JSON."""
+        base_path = os.path.splitext(audio_path)[0]
+        
+        # 1. Save Segments JSON
+        with open(base_path + "_segments.json", 'w', encoding='utf-8') as f:
+            json.dump(segments, f, indent=2)
+            
+        # 2. Save Words JSON (Flat list)
+        words = []
+        for seg in segments:
+            if "words" in seg:
+                words.extend(seg["words"])
+        
+        with open(base_path + "_words.json", 'w', encoding='utf-8') as f:
+            json.dump(words, f, indent=2)
+            
+        # 3. Save SRT
+        srt_content = segments_to_srt(segments)
+        with open(base_path + ".srt", 'w', encoding='utf-8') as f:
+            f.write(srt_content)
+            
+        print(f"Saved subtitles to {base_path} [.srt, _segments.json, _words.json]")
+
+
 
     def _generate_groq_subtitles(self, audio_path: str):
         """
