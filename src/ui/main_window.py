@@ -362,7 +362,7 @@ class App(ctk.CTk):
     def _get_model_list_safe(self):
         """Helper to get models without blocking UI too long (though file read is fast)."""
         models = self.media_service.get_pollinations_models()
-        return models if models else ["gptimage"] # Fallback
+        return models if models else ["zimage"] # Fallback
 
     def refresh_pollinations_models(self):
         """Fetch fresh models from API."""
@@ -752,6 +752,7 @@ class App(ctk.CTk):
             Config.save_key("IMAGE_ANIMATION_ENABLED", str(Config.IMAGE_ANIMATION_ENABLED))
 
         if hasattr(self, 'model_var'):
+            #save model for next time application runs not just this session
             Config.POLLINATIONS_MODEL = self.model_var.get()
             Config.save_key("POLLINATIONS_MODEL", Config.POLLINATIONS_MODEL)
 
