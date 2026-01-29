@@ -31,8 +31,9 @@ class SceneItem(ctk.CTkFrame):
     def _setup_ui(self):
         self.grid_columnconfigure(1, weight=1)
         
-        # Header: ID + Time
-        header_text = f"Scene {self.scene_data.get('id')} ({self.scene_data.get('start_time')} - {self.scene_data.get('end_time')})"
+        # Header: ID + Time + duration
+        duration = self.scene_data.get('end_time') - self.scene_data.get('start_time')
+        header_text = f"Scene {self.scene_data.get('id')} ({self.scene_data.get('start_time')} - {self.scene_data.get('end_time')}) ({duration})s"
         self.header_label = ctk.CTkLabel(self, text=header_text, font=ctk.CTkFont(weight="bold"))
         self.header_label.grid(row=0, column=0, columnspan=3, sticky="w", padx=10, pady=(10, 5))
         
@@ -106,21 +107,27 @@ class SceneItem(ctk.CTkFrame):
         self.on_retry(self.index, self.scene_data, self)
 
     def update_status(self):
-        """Update UI based on scene_data state."""
+        """Update UI based on scene_data state. Only shows success if file actually exists."""
         media = self.scene_data.get('media_url') or self.scene_data.get('media_path')
+        
         if media:
             if media.startswith("http"):
+                # URL - assume valid if present
                 display_text = f"Ready: {media[:40]}..."
                 self.status_label.configure(text=display_text, text_color="green")
-                # Bind click to open URL
                 self.status_label.bind("<Button-1>", lambda e: webbrowser.open(media))
                 self.status_label.configure(cursor="hand2")
             else:
-                display_text = f"Ready: {os.path.basename(media)}"
-                self.status_label.configure(text=display_text, text_color="green")
-                # Bind click to open file
-                self.status_label.bind("<Button-1>", lambda e: os.startfile(media) if os.name == 'nt' else None)
-                self.status_label.configure(cursor="hand2")
+                # Local file - verify it exists before showing success
+                if os.path.exists(media):
+                    display_text = f"Ready: {os.path.basename(media)}"
+                    self.status_label.configure(text=display_text, text_color="green")
+                    self.status_label.bind("<Button-1>", lambda e: os.startfile(media) if os.name == 'nt' else None)
+                    self.status_label.configure(cursor="hand2")
+                else:
+                    # File path set but file doesn't exist
+                    self.status_label.configure(text="Status: File Missing", text_color="orange", cursor="")
+                    self.status_label.unbind("<Button-1>")
         else:
             self.status_label.configure(text="Status: No Media / Failed", text_color="red", cursor="")
             self.status_label.unbind("<Button-1>")
@@ -549,10 +556,16 @@ class App(ctk.CTk):
         return (1920, 1080, "landscape")
 
     def _fetch_all_media(self):
-        # Iterate scenes and fetch media
+        """Iterate scenes and fetch media, updating UI after each scene."""
         for i, scene in enumerate(self.scenes):
             self._fetch_single_scene_media(scene)
-            # Optional: callback to update individual row progress if we had granular callbacks
+            
+            # Update the corresponding widget's status (thread-safe via after)
+            if i < len(self.scene_widgets):
+                widget = self.scene_widgets[i]
+                # Use after(0) to schedule UI update on main thread
+                self.after(0, widget.update_status)
+        
         return self.scenes
 
     def _fetch_single_scene_media(self, scene):
