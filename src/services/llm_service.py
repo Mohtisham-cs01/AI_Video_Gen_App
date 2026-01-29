@@ -204,10 +204,16 @@ Example:
                      parsed_result = json.loads(result_text)
 
                 
+
                 # Validate structure
                 if "scenes" in parsed_result and isinstance(parsed_result["scenes"], list):
                     print(f"DEBUG: Successfully parsed {len(parsed_result['scenes'])} scenes")
-                    return parsed_result
+                    
+                    # Validate and fix scenes
+                    validated_scenes = self._validate_and_fix_scenes(parsed_result["scenes"], word_subtitles)
+                    print(f"DEBUG: Validated scenes count: {len(validated_scenes)}")
+                    
+                    return {"scenes": validated_scenes}
                 else:
                     print("DEBUG: Invalid JSON structure in response, checking keys...")
                     if isinstance(parsed_result, dict):
@@ -225,5 +231,201 @@ Example:
             print(f"ERROR: LLM Error (Pollinations POST): {e}")
             return {"scenes": []}
 
+    def _validate_and_fix_scenes(self, scenes: list, word_subtitles: list) -> list:
+        """
+        Validates and fixes scenes to ensure:
+        1. No scene exceeds 10 seconds (HARD LIMIT)
+        2. No scene is shorter than 0.5 seconds (merged with previous)
+        3. No gaps between scenes (filled with visual-only scenes)
+        4. No overlaps between scenes (adjusted)
+        5. Text aligned with word-level subtitles
+        
+        Args:
+            scenes: List of scene dicts from LLM
+            word_subtitles: List of [word, start, end] items from subtitle service
+        
+        Returns:
+            List of validated scene dicts
+        """
+        if not scenes:
+            return []
+        
+        # --- Constants ---
+        MAX_DURATION = 10.0
+        MIN_DURATION = 0.5
+        FILLER_CHUNK_SIZE = 8.0
+        
+        # Prompt variations for split scenes (to generate different visuals)
+        SPLIT_VARIATIONS = [
+            "",  # First chunk keeps original
+            ", different angle",
+            ", close-up shot",
+            ", wide establishing shot",
+            ", dramatic lighting",
+            ", slow motion feel",
+            ", dynamic camera movement",
+            ", alternative perspective"
+        ]
+        
+        # --- Prepare word data ---
+        # Sort words by start time
+        sorted_words = sorted(word_subtitles, key=lambda x: x[1])
+        
+        def get_words_in_range(start_t: float, end_t: float) -> list:
+            """Get words that START within [start_t, end_t)."""
+            return [w for w in sorted_words if start_t <= w[1] < end_t]
+        
+        def get_text_for_range(start_t: float, end_t: float) -> str:
+            """Get concatenated text for words in range."""
+            words = get_words_in_range(start_t, end_t)
+            return " ".join(w[0] for w in words)
+        
+        # --- PASS 1: Split any scene > MAX_DURATION ---
+        split_scenes = []
+        
+        for scene in scenes:
+            start = float(scene.get('start_time', 0))
+            end = float(scene.get('end_time', 0))
+            duration = end - start
+            
+            if duration <= 0:
+                continue  # Invalid scene, skip
+            
+            if duration <= MAX_DURATION:
+                # Scene is OK, add as-is
+                split_scenes.append({
+                    "start_time": round(start, 2),
+                    "end_time": round(end, 2),
+                    "text": scene.get('text', ''),
+                    "visual_query": scene.get('visual_query', ''),
+                    "media_source": scene.get('media_source', 'pollinations')
+                })
+            else:
+                # Scene is too long, MUST split by time
+                current_time = start
+                part = 1
+                while current_time < end:
+                    chunk_end = min(current_time + FILLER_CHUNK_SIZE, end)
+                    
+                    # Avoid tiny last chunk
+                    if (end - chunk_end) < MIN_DURATION and (end - chunk_end) > 0:
+                        chunk_end = end
+                    
+                    # Get text for this chunk from word subtitles
+                    chunk_text = get_text_for_range(current_time, chunk_end)
+                    
+                    # Vary the visual query for each split chunk
+                    variation = SPLIT_VARIATIONS[part % len(SPLIT_VARIATIONS)]
+                    base_query = scene.get('visual_query', '')
+                    varied_query = base_query + variation if base_query else f"Atmospheric scene{variation}"
+                    
+                    split_scenes.append({
+                        "start_time": round(current_time, 2),
+                        "end_time": round(chunk_end, 2),
+                        "text": chunk_text,
+                        "visual_query": varied_query,
+                        "media_source": scene.get('media_source', 'pollinations')
+                    })
+                    
+                    current_time = chunk_end
+                    part += 1
+        
+        if not split_scenes:
+            return []
+        
+        # Sort by start_time to ensure order
+        split_scenes.sort(key=lambda x: x['start_time'])
+        
+        # --- PASS 2: Fill gaps and fix overlaps ---
+        final_scenes = []
+        
+        for i, scene in enumerate(split_scenes):
+            if i == 0:
+                final_scenes.append(scene)
+                continue
+            
+            prev = final_scenes[-1]
+            curr = scene.copy()
+            
+            gap = curr['start_time'] - prev['end_time']
+            
+            if gap > 0.1:  # Significant gap exists
+                # Fill the gap with visual-only scenes
+                fill_start = prev['end_time']
+                fill_end = curr['start_time']
+                
+                while fill_start < fill_end:
+                    chunk_end = min(fill_start + FILLER_CHUNK_SIZE, fill_end)
+                    
+                    filler = {
+                        "start_time": round(fill_start, 2),
+                        "end_time": round(chunk_end, 2),
+                        "text": "",  # No spoken text in filler
+                        "visual_query": prev.get('visual_query', '') + " (Atmospheric)",
+                        "media_source": prev.get('media_source', 'pollinations')
+                    }
+                    final_scenes.append(filler)
+                    fill_start = chunk_end
+                    
+            elif gap < -0.1:  # Overlap exists
+                # Adjust current scene start to fix overlap
+                curr['start_time'] = prev['end_time']
+                if curr['end_time'] <= curr['start_time']:
+                    curr['end_time'] = curr['start_time'] + MIN_DURATION
+            
+            # Merge very short scenes with previous
+            curr_duration = curr['end_time'] - curr['start_time']
+            if curr_duration < MIN_DURATION:
+                # Extend previous scene instead of adding this tiny one
+                prev['end_time'] = max(prev['end_time'], curr['end_time'])
+                if curr['text']:
+                    prev['text'] = (prev.get('text', '') + " " + curr['text']).strip()
+            else:
+                final_scenes.append(curr)
+        
+        # --- PASS 3: Final validation - ensure no scene > MAX_DURATION ---
+        # This is a safety net in case any scene slipped through
+        validated_scenes = []
+        
+        for scene in final_scenes:
+            duration = scene['end_time'] - scene['start_time']
+            
+            if duration <= MAX_DURATION:
+                validated_scenes.append(scene)
+            else:
+                # Force split by time
+                current_time = scene['start_time']
+                end = scene['end_time']
+                
+                part = 0
+                while current_time < end:
+                    chunk_end = min(current_time + FILLER_CHUNK_SIZE, end)
+                    
+                    chunk_text = get_text_for_range(current_time, chunk_end)
+                    
+                    # Vary the visual query
+                    variation = SPLIT_VARIATIONS[part % len(SPLIT_VARIATIONS)]
+                    base_query = scene.get('visual_query', '')
+                    varied_query = base_query + variation if base_query else f"Atmospheric scene{variation}"
+                    
+                    validated_scenes.append({
+                        "start_time": round(current_time, 2),
+                        "end_time": round(chunk_end, 2),
+                        "text": chunk_text,
+                        "visual_query": varied_query,
+                        "media_source": scene.get('media_source', 'pollinations')
+                    })
+                    
+                    current_time = chunk_end
+                    part += 1
+        
+        # --- Assign sequential IDs ---
+        for i, scene in enumerate(validated_scenes):
+            scene['id'] = i + 1
+        
+        return validated_scenes
+
     def generate_visual_queries_only(self, text_chunk):
         pass
+
+
