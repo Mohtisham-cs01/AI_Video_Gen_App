@@ -9,6 +9,21 @@ import mimetypes
 from src.config import Config
 import platform
 import random
+from proglog import ProgressBarLogger
+
+class MyBarLogger(ProgressBarLogger):
+    
+    def callback(self, **changes):
+        # Every time the logger message is updated, this function is called with
+        # the `changes` dictionary of the form `parameter: new value`.
+        for (parameter, value) in changes.items():
+            print ('Parameter %s is now %s' % (parameter, value))
+    
+    def bars_callback(self, bar, attr, value,old_value=None):
+        # Every time the logger progress is updated, this function is called        
+        percentage = (value / self.bars[bar]['total']) * 100
+        print(bar,attr,percentage)
+
 
 class VideoService:
     def __init__(self):
@@ -438,13 +453,16 @@ class VideoService:
                 final_video = self.add_subtitles_to_video(final_video, subtitle_segments, resolution)
             
             print(f"\nExporting final video to {output_path}...")
+            #saving the progess in a varibale instead of terminal
+            logger = MyBarLogger()
             final_video.write_videofile(
                 output_path,
                 codec='libx264',
                 audio_codec='aac',
                 fps=24,
                 threads=8,
-                preset='ultrafast' 
+                preset='ultrafast', 
+                logger=logger
             )
             
             print("\nCleaning up...")
