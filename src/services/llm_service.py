@@ -2,7 +2,7 @@ import json
 import requests
 import urllib.parse
 from ..config import Config
-
+import random
 class LLMService:
     def __init__(self, provider="pollinations"):
         self.provider = provider
@@ -87,56 +87,59 @@ class LLMService:
         #         """
 
         # Combine instructions and data into a single robust prompt
+        #add a random seed in prompt for entropy
+        random_seed = random.randint(0, 1000000)
         combined_prompt = f"""
-You are a professional video editor and director. Your goal is to turn a narration script into a perfectly timed video plan.
+        You are a professional video editor and director. Your goal is to turn a narration script into a perfectly timed video plan.
+        random_seed: {random_seed}
 
-### INPUT DATA
-1. **Script**:
-{script_text}
+        ### INPUT DATA
+        1. **Script**:
+        {script_text}
 
-2. **Word-Level Timings** (JSON):
-{json.dumps(word_subtitles)[:15000]}
+        2. **Word-Level Timings** (JSON):
+        {json.dumps(word_subtitles)}
 
-### YOUR TASK
-Generate a JSON response containing a list of video scenes.
-Each scene must cover a specific segment of the script.
+        ### YOUR TASK
+        Generate a JSON response containing a list of video scenes.
+        Each scene must cover a specific segment of the script.
 
-### CRITICAL TIMING RULES (MUST FOLLOW)
-1. **NO GAPS**: The `start_time` of Scene N must EXACTLY match the `end_time` of Scene N-1.
-2. **FULL COVERAGE**: The first scene starts at the first word's start time. The last scene ends at the last word's end time.
-3. **DURATION LIMIT**: 
-   - Ideal scene length: **3 to 7 seconds**.
-   - Maximum scene length: **10 seconds** (Absolute Limit).
-   - If a legitimate sentence/segment is longer than 10 seconds, **YOU MUST SPLIT IT** into two visual scenes.
-4. **PACING**: Vary scene lengths. Don't make them all exactly 5 seconds. Use the flow of the speech.
+        ### CRITICAL TIMING RULES (MUST FOLLOW)
+        1. **NO GAPS**: The `start_time` of Scene N must EXACTLY match the `end_time` of Scene N-1.
+        2. **FULL COVERAGE**: The first scene starts at the first word's start time. The last scene ends at the last word's end time.
+        3. **DURATION LIMIT**: 
+        - Ideal scene length: **3 to 7 seconds**.
+        - Maximum scene length: **10 seconds** (Absolute Limit).
+        - If a legitimate sentence/segment is longer than 10 seconds, **YOU MUST SPLIT IT** into two visual scenes.
+        4. **PACING**: Vary scene lengths. Don't make them all exactly 5 seconds. Use the flow of the speech.
 
-### MEDIA SOURCE RULES
-Select `media_source` ONLY from: {json.dumps(enabled)}
-{available_sources_prompt}
+        ### MEDIA SOURCE RULES
+        Select `media_source` ONLY from: {json.dumps(enabled)}
+        {available_sources_prompt}
 
-### OUTPUT FORMAT
-Return strictly valid JSON with a single key "scenes".
-Example:
-{{
-  "scenes": [
-    {{
-      "id": 1,
-      "text": "The quick brown fox",
-      "start_time": 0.0,
-      "end_time": 3.5,
-      "media_source": "pexels",
-      "visual_query": "red fox running in autumn forest close up"
-    }},
-    {{
-      "id": 2,
-      "text": "jumps over the lazy dog.",
-      "start_time": 3.5,
-      "end_time": 6.2,
-      "media_source": "pollinations",
-      "visual_query": "lazy sleeping dog in sunlight, cinematic 4k"
-    }}
-  ]
-}}
+        ### OUTPUT FORMAT
+        Return strictly valid JSON with a single key "scenes".
+        Example:
+        {{
+        "scenes": [
+            {{
+            "id": 1,
+            "text": "The quick brown fox",
+            "start_time": 0.0,
+            "end_time": 3.5,
+            "media_source": "source_name",
+            "visual_query": "red fox running in autumn forest close up"
+            }}
+            {{
+            "id": 2,
+            "text": "The quick brown fox",
+            "start_time": 3.5,
+            "end_time": 7.0,
+            "media_source": "source_name",
+            "visual_query": "red fox running in autumn forest close up"
+            }}
+        ]
+        }}
 """
 
         try:
@@ -150,7 +153,7 @@ Example:
             url = "https://gen.pollinations.ai/v1/chat/completions"
             
             payload = {
-                "model": "openai-large", # Using 'deepseek' as requested or default reliable model
+                "model": "kimi", # Using 'deepseek' as requested or default reliable model
                 "messages": [
                     {"role": "user", "content": combined_prompt}
                 ],
@@ -160,7 +163,7 @@ Example:
             print(f"DEBUG: Sending POST request to {url}")
             # print(f"DEBUG: Payload model: {payload['model']}")
             
-            response = requests.post(url, headers=headers, json=payload, timeout=120)
+            response = requests.post(url, headers=headers, json=payload)
             
             print(f"DEBUG: Response status: {response.status_code}")
             
