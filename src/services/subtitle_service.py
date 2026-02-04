@@ -81,7 +81,7 @@ class SubtitleService:
             print(f"WhisperX error: {e}")
             raise
 
-    def _save_outputs(self, audio_path: str, segments: list):
+    def _save_outputs(self, audio_path: str, segments: list, words_list: list = None):
         """Save SRT, Segments JSON, and Words JSON."""
         base_path = os.path.splitext(audio_path)[0]
         
@@ -89,14 +89,18 @@ class SubtitleService:
         with open(base_path + "_segments.json", 'w', encoding='utf-8') as f:
             json.dump(segments, f, indent=2, ensure_ascii=False)
             
-        # 2. Save Words JSON (Flat list)
-        words = []
-        for seg in segments:
-            if "words" in seg:
-                words.extend(seg["words"])
+        # 2. Save Words JSON
+        # If explicit words_list is passed, use it. Otherwise extract from segments.
+        final_words = []
+        if words_list:
+             final_words = words_list
+        else:
+            for seg in segments:
+                if "words" in seg:
+                    final_words.extend(seg["words"])
         
         with open(base_path + "_words.json", 'w', encoding='utf-8') as f:
-            json.dump(words, f, indent=2, ensure_ascii=False)
+            json.dump(final_words, f, indent=2, ensure_ascii=False)
             
         # 3. Save SRT
         srt_content = segments_to_srt(segments)
@@ -106,11 +110,10 @@ class SubtitleService:
         print(f"Saved subtitles to {base_path} [.srt, _segments.json, _words.json]")
 
 
-
     def _generate_groq_subtitles(self, audio_path: str):
         """
-        Generates subtitles using Groq's Whisper API via HTTP request.
-        Request both words and segments.
+        Generates subtitles using Groq's Whisper API.
+        Returns segments with embedded words.
         """
         url = "https://api.groq.com/openai/v1/audio/transcriptions"
         
@@ -128,7 +131,7 @@ class SubtitleService:
                 data = {
                     "model": "whisper-large-v3",
                     "response_format": "verbose_json",
-                    "timestamp_granularities[]": ["word", "segment"] # Request both
+                    "timestamp_granularities[]": ["word", "segment"] 
                 }
                 
                 print(f"Sending request to Groq API ({url})...")
@@ -139,73 +142,56 @@ class SubtitleService:
                 
                 result = response.json()
                 
-                # Transform to match WhisperX output where possible
-                # Groq/OpenAI verbose_json structure:
-                # {
-                #   "text": "...",
-                #   "segments": [...],
-                #   "words": [...]
-                # }
-                #
-                # WhisperX expects a list of segments, where each segment has a 'words' key.
-                # However, OpenAI 'words' are usually a flat list at top level (sometimes).
-                # Let's check the structure. If 'words' are at top level, we might need to map them to segments 
-                # or just return the segments if they already contain words (some implementations do).
-                #
-                # Standard OpenAI 'verbose_json' with 'segment' granularity returns segments.
-                # 'word' granularity returns top-level 'words'.
-                # IF requesting BOTH, we should get both keys.
-                #
-                # We need to ensure the return value is a list of segments, and ideally each segment has 'words'.
-                
                 segments = result.get("segments", [])
-                words = result.get("words", [])
+                words = result.get("words", []) 
                 
                 if not segments and not words:
-                    print("Groq API returned no segments and no words.")
                     return []
+                
+                # Merge words into segments to match expected structure
+                # and fix potential missing words in gaps
+                self._merge_words_into_segments(segments, words)
 
-                # If we have segments but they lack 'words', and we have a top-level 'words' list,
-                # we can try to distribute words into segments based on timestamps.
-                if segments and words and 'words' not in segments[0]:
-                    print("Mapping top-level words to segments...")
-                    word_idx = 0
-                    for seg in segments:
-                        seg_start = seg.get("start", 0)
-                        seg_end = seg.get("end", 0)
-                        seg_words = []
-                        
-                        # Collect words that fall within this segment
-                        # Assuming sorted words
-                        while word_idx < len(words):
-                            w = words[word_idx]
-                            w_start = w.get("start", 0)
-                            w_end = w.get("end", 0) # sometimes not present
-                            
-                            # Simple overlap check: word center is inside segment
-                            # or just start time check
-                            if w_start >= seg_start and w_start < seg_end:
-                                seg_words.append(w)
-                                word_idx += 1
-                            elif w_start >= seg_end:
-                                break
-                            else:
-                                # Word started before segment? Should not happen if sorted, or overlap.
-                                word_idx += 1
-                        
-                        seg["words"] = seg_words
-                
-                # Prepare result: clean up keys if necessary to match WhisperX
-                # WhisperX segments usually have: start, end, text, words
-                
                 print(f"Groq transcription complete. {len(segments)} segments.")
                 return segments
                 
         except Exception as e:
             raise Exception(f"Failed to generate subtitles via Groq: {e}")
 
+    def _merge_words_into_segments(self, segments, words):
+        """
+        Merges a flat list of words into segments based on timing.
+        Ensures NO words are lost by including gap words in the subsequent segment.
+        """
+        if not segments or not words:
+            return
 
-        return []
+        word_idx = 0
+        for seg in segments:
+            seg_start = seg.get("start", 0)
+            seg_end = seg.get("end", 0)
+            seg_words = []
+            
+            # Consume words until we pass the segment end
+            while word_idx < len(words):
+                w = words[word_idx]
+                w_start = w.get("start", 0)
+                
+                # Include word if it starts before this segment ends.
+                # This effectively grabs any words in the "gap" before this segment too.
+                if w_start < seg_end:
+                    seg_words.append(w)
+                    word_idx += 1
+                else:
+                    break
+            
+            seg["words"] = seg_words
+
+        # Append any leftovers to the last segment
+        if word_idx < len(words) and segments:
+            print(f"Appending {len(words) - word_idx} leftover words to last segment.")
+            segments[-1]["words"].extend(words[word_idx:])
+
 
     def load_from_json(self, json_path: str):
         with open(json_path, 'r') as f:
