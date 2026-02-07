@@ -10,21 +10,30 @@ from src.config import Config
 import platform
 import random
 from proglog import ProgressBarLogger
+import time
+import datetime
 
 class MyBarLogger(ProgressBarLogger):
     
-    def callback(self, **changes):
-        # Every time the logger message is updated, this function is called with
-        # the `changes` dictionary of the form `parameter: new value`.
-        for (parameter, value) in changes.items():
-            print ('Parameter %s is now %s' % (parameter, value))
+    def __init__(self):
+        super().__init__()
+        self.last_print = 0
     
-    def bars_callback(self, bar, attr, value,old_value=None):
-        # Every time the logger progress is updated, this function is called        
-        percentage = (value / self.bars[bar]['total']) * 100
-        print(bar,attr,percentage)
-
-
+    def callback(self, **changes):
+        for (parameter, value) in changes.items():
+            print('Parameter %s is now %s' % (parameter, value))
+    
+    def bars_callback(self, bar, attr, value, old_value=None):
+        # Original functionality
+        total = self.bars[bar]['total']
+        percentage = (value / total) * 100
+        
+        # Just print the basic info - at least this should work
+        current_time = time.time()
+        if current_time - self.last_print > 1.0:  # Don't spam too much
+            print(f"{bar}: {percentage:.1f}% ({value}/{total})")
+            # print(bar,attr,percentage)
+            self.last_print = current_time
 class VideoService:
     def __init__(self):
         self.temp_clips = []
