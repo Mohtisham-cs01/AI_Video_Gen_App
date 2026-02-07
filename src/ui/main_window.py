@@ -245,14 +245,27 @@ class App(ctk.CTk):
         ctk.CTkLabel(header_frame, text="Scene Editor", font=ctk.CTkFont(size=16, weight="bold")).pack(side="left")
         
         # Action Buttons
+        button_frame = ctk.CTkFrame(header_frame, fg_color="transparent")
+        button_frame.pack(side="right")
+
+        self.stop_video_btn = ctk.CTkButton(
+            button_frame,
+            text="Stop Generation",
+            command=self.stop_generation_action,
+            fg_color="red",
+            state="disabled",
+            width=120
+        )
+        self.stop_video_btn.pack(side="left", padx=5)
+
         self.generate_video_btn = ctk.CTkButton(
-            header_frame,
+            button_frame,
             text="Generate Final Video",
             command=self.start_video_generation,
             fg_color="purple",
             state="disabled"
         )
-        self.generate_video_btn.pack(side="right")
+        self.generate_video_btn.pack(side="left")
 
         # Scrollable list for scenes
         self.scenes_frame = ctk.CTkScrollableFrame(self.tab_preview, width=800, height=500)
@@ -668,6 +681,7 @@ class App(ctk.CTk):
 
         self.status_label.configure(text="Generating Final Video...", text_color="blue")
         self.generate_video_btn.configure(state="disabled")
+        self.stop_video_btn.configure(state="normal") # Enable stop button
         
         output_path = os.path.join(Config.OUTPUT_DIR, "final_video.mp4")
         
@@ -706,11 +720,26 @@ class App(ctk.CTk):
             resolution=(width, height)
         )
     
+    def stop_generation_action(self):
+        """Action for the Stop button."""
+        if messagebox.askyesno("Stop Generation", "Are you sure you want to stop the video generation?"):
+            self.video_service.stop_generation()
+            self.status_label.configure(text="Stopping generation...", text_color="orange")
+            self.stop_video_btn.configure(state="disabled")
+
     def _on_video_generated(self, result, error):
         """Handle video generation completion."""
+        self.stop_video_btn.configure(state="disabled") # Always disable stop button when done
+        self.generate_video_btn.configure(state="normal") # Re-enable generate button
+
         if error:
-            self.status_label.configure(text=f"Error (Video): {error}", text_color="red")
-            messagebox.showerror("Video Generation Failed", str(error))
+            error_str = str(error)
+            if "stopped by user" in error_str:
+                self.status_label.configure(text="⚠ Generation Stopped by User", text_color="orange")
+                # Optional: messagebox.showinfo("Stopped", "Video generation was stopped.")
+            else:
+                self.status_label.configure(text=f"Error (Video): {error}", text_color="red")
+                messagebox.showerror("Video Generation Failed", error_str)
         else:
             self.status_label.configure(text="✓ Final Video Generated!", text_color="green")
             messagebox.showinfo("Success", f"Video saved to:\n{result}")
@@ -725,8 +754,6 @@ class App(ctk.CTk):
                         subprocess.call(('xdg-open', result))
                 except Exception as e:
                     print(f"Error opening video: {e}")
-        
-        self.generate_video_btn.configure(state="normal")
 
 
     def _update_config_from_ui(self):

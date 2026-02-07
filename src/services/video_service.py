@@ -1,3 +1,4 @@
+import threading
 import os
 from moviepy import (
     ColorClip, VideoFileClip, ImageClip, AudioFileClip,
@@ -15,15 +16,20 @@ import datetime
 
 class MyBarLogger(ProgressBarLogger):
     
-    def __init__(self):
+    def __init__(self, cancel_check=None):
         super().__init__()
         self.last_print = 0
+        self.cancel_check = cancel_check
     
     def callback(self, **changes):
         for (parameter, value) in changes.items():
             print('Parameter %s is now %s' % (parameter, value))
     
     def bars_callback(self, bar, attr, value, old_value=None):
+        # Check for cancellation
+        if self.cancel_check and self.cancel_check():
+            raise Exception("Video generation stopped by user.")
+
         # Original functionality
         total = self.bars[bar]['total']
         percentage = (value / total) * 100
@@ -34,9 +40,16 @@ class MyBarLogger(ProgressBarLogger):
             print(f"{bar}: {percentage:.1f}% ({value}/{total})")
             # print(bar,attr,percentage)
             self.last_print = current_time
+
 class VideoService:
     def __init__(self):
         self.temp_clips = []
+        self.stop_event = threading.Event()
+
+    def stop_generation(self):
+        """Signal to stop the video generation process."""
+        print("Stopping video generation...")
+        self.stop_event.set()
     
     def download_media(self, url, output_dir, scene_id):
         """
@@ -407,6 +420,8 @@ class VideoService:
     def combine_scenes(self, scenes, audio_path, output_path, subtitle_segments=None, resolution=(1920, 1080)):
         """Combine scenes into final video with audio."""
         try:
+            self.stop_event.clear() # Reset stop flag
+            
             print("\n" + "="*60)
             print(f"STARTING VIDEO COMPOSITION ({resolution[0]}x{resolution[1]})")
             print("="*60)
@@ -414,6 +429,9 @@ class VideoService:
             output_dir = os.path.dirname(output_path)
             if not os.path.exists(output_dir):
                 os.makedirs(output_dir)
+            
+            # Check for stop early
+            if self.stop_event.is_set(): raise Exception("Video generation stopped by user.")
             
             # Audio
             audio = AudioFileClip(audio_path)
@@ -429,6 +447,8 @@ class VideoService:
             # Process Scenes
             scene_clips = []
             for scene in scenes:
+                if self.stop_event.is_set(): raise Exception("Video generation stopped by user.")
+
                 # We do NOT use try/except here so that errors bubble up and stop functionality
                 clip = self.create_scene_clip(scene, output_dir, resolution)
                 
@@ -449,6 +469,8 @@ class VideoService:
             if not scene_clips:
                 raise Exception("No valid scene clips created.")
 
+            if self.stop_event.is_set(): raise Exception("Video generation stopped by user.")
+
             print(f"\n✓ Creating composite with {len(scene_clips)} scenes")
             final_video = CompositeVideoClip(
                 [background] + scene_clips,
@@ -463,7 +485,8 @@ class VideoService:
             
             print(f"\nExporting final video to {output_path}...")
             #saving the progess in a varibale instead of terminal
-            logger = MyBarLogger()
+            # Pass lambda to check threading event
+            logger = MyBarLogger(cancel_check=lambda: self.stop_event.is_set())
             final_video.write_videofile(
                 output_path,
                 codec='libx264',
