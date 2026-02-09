@@ -267,6 +267,17 @@ class App(ctk.CTk):
         )
         self.generate_video_btn.pack(side="left")
 
+        # Progress Section
+        self.progress_frame = ctk.CTkFrame(self.tab_preview, fg_color="transparent")
+        self.progress_frame.pack(fill="x", padx=5, pady=(0, 5))
+        
+        self.progress_label = ctk.CTkLabel(self.progress_frame, text="Ready to generate.", text_color="white", font=ctk.CTkFont(size=12))
+        self.progress_label.pack(side="top", anchor="w")
+        
+        self.progress_bar = ctk.CTkProgressBar(self.progress_frame) # width adapts to fill
+        self.progress_bar.pack(fill="x", pady=2)
+        self.progress_bar.set(0)
+
         # Scrollable list for scenes
         self.scenes_frame = ctk.CTkScrollableFrame(self.tab_preview, width=800, height=500)
         self.scenes_frame.pack(fill="both", expand=True, padx=5, pady=5)
@@ -661,6 +672,18 @@ class App(ctk.CTk):
         self.task_manager.check_results()
         self.after(100, self._check_tasks)
 
+    def _update_progress(self, message, percentage):
+        """Callback to update progress bar and label safely."""
+        def _update():
+            # Ensure percentage is between 0 and 100 for display, 0-1 for bar
+            pct_disp = max(0, min(100, percentage))
+            pct_bar = pct_disp / 100.0
+            
+            self.progress_label.configure(text=f"{message} ({pct_disp:.1f}%)", text_color="white")
+            self.progress_bar.set(pct_bar)
+        
+        self.after(0, _update)
+
     def start_video_generation(self):
         """Start the final video composition."""
         if not self.scenes or not self.generated_audio_path:
@@ -717,7 +740,8 @@ class App(ctk.CTk):
             self.generated_audio_path,
             output_path,
             subtitle_segments,
-            resolution=(width, height)
+            resolution=(width, height),
+            progress_callback=self._update_progress
         )
     
     def stop_generation_action(self):
@@ -731,17 +755,24 @@ class App(ctk.CTk):
         """Handle video generation completion."""
         self.stop_video_btn.configure(state="disabled") # Always disable stop button when done
         self.generate_video_btn.configure(state="normal") # Re-enable generate button
-
+        
         if error:
+            self.progress_label.configure(text=f"Failed", text_color="red")
+            self.progress_bar.set(0)
+            
             error_str = str(error)
             if "stopped by user" in error_str:
                 self.status_label.configure(text="⚠ Generation Stopped by User", text_color="orange")
+                self.progress_label.configure(text="⚠ Stopped by User", text_color="orange")
                 # Optional: messagebox.showinfo("Stopped", "Video generation was stopped.")
             else:
                 self.status_label.configure(text=f"Error (Video): {error}", text_color="red")
                 messagebox.showerror("Video Generation Failed", error_str)
         else:
             self.status_label.configure(text="✓ Final Video Generated!", text_color="green")
+            self.progress_label.configure(text="✓ Completed", text_color="green")
+            self.progress_bar.set(1)
+            
             messagebox.showinfo("Success", f"Video saved to:\n{result}")
             
             # Option to open video

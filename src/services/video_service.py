@@ -16,14 +16,16 @@ import datetime
 
 class MyBarLogger(ProgressBarLogger):
     
-    def __init__(self, cancel_check=None):
+    def __init__(self, cancel_check=None, progress_callback=None):
         super().__init__()
         self.last_print = 0
         self.cancel_check = cancel_check
+        self.progress_callback = progress_callback
     
     def callback(self, **changes):
         for (parameter, value) in changes.items():
-            print('Parameter %s is now %s' % (parameter, value))
+            # print('Parameter %s is now %s' % (parameter, value))
+            pass
     
     def bars_callback(self, bar, attr, value, old_value=None):
         # Check for cancellation
@@ -36,9 +38,15 @@ class MyBarLogger(ProgressBarLogger):
         
         # Just print the basic info - at least this should work
         current_time = time.time()
-        if current_time - self.last_print > 1.0:  # Don't spam too much
-            print(f"{bar}: {percentage:.1f}% ({value}/{total})")
+        if current_time - self.last_print > 0.5:  # Don't spam too much
+            msg = f"{bar}: {percentage:.1f}% ({value}/{total})"
+            print(msg)
             # print(bar,attr,percentage)
+            
+            # Send to UI if callback exists
+            if self.progress_callback:
+                self.progress_callback(msg, percentage)
+                
             self.last_print = current_time
 
 class VideoService:
@@ -417,7 +425,7 @@ class VideoService:
             print(f"Error adding subtitles: {e}")
             return video_clip
 
-    def combine_scenes(self, scenes, audio_path, output_path, subtitle_segments=None, resolution=(1920, 1080)):
+    def combine_scenes(self, scenes, audio_path, output_path, subtitle_segments=None, resolution=(1920, 1080), progress_callback=None):
         """Combine scenes into final video with audio."""
         try:
             self.stop_event.clear() # Reset stop flag
@@ -425,6 +433,9 @@ class VideoService:
             print("\n" + "="*60)
             print(f"STARTING VIDEO COMPOSITION ({resolution[0]}x{resolution[1]})")
             print("="*60)
+            
+            if progress_callback:
+                progress_callback("Preparing scenes...", 0)
             
             output_dir = os.path.dirname(output_path)
             if not os.path.exists(output_dir):
@@ -446,8 +457,11 @@ class VideoService:
             
             # Process Scenes
             scene_clips = []
-            for scene in scenes:
+            for i, scene in enumerate(scenes):
                 if self.stop_event.is_set(): raise Exception("Video generation stopped by user.")
+
+                if progress_callback:
+                    progress_callback(f"Processing scene {i+1}/{len(scenes)}", 10 + (i/len(scenes)*10))
 
                 # We do NOT use try/except here so that errors bubble up and stop functionality
                 clip = self.create_scene_clip(scene, output_dir, resolution)
@@ -486,7 +500,7 @@ class VideoService:
             print(f"\nExporting final video to {output_path}...")
             #saving the progess in a varibale instead of terminal
             # Pass lambda to check threading event
-            logger = MyBarLogger(cancel_check=lambda: self.stop_event.is_set())
+            logger = MyBarLogger(cancel_check=lambda: self.stop_event.is_set(), progress_callback=progress_callback)
             final_video.write_videofile(
                 output_path,
                 codec='libx264',
