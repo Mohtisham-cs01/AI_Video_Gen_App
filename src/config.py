@@ -18,6 +18,48 @@ class Config:
     # Default enabled sources
     ENABLED_MEDIA_SOURCES = os.getenv("ENABLED_MEDIA_SOURCES", "pexels,pollinations,duckduckgo").split(",")
 
+    # User Settings File
+    USER_SETTINGS_FILE = os.path.join(os.getcwd(), "user_settings.json")
+
+    @staticmethod
+    def load_user_settings():
+        """Load user settings from JSON file. Returns default dict if file missing."""
+        import json
+        default_settings = {
+            "aspect_ratio": "16:9",
+            "input_mode": "script",
+            "tts_service": "Pollinations AI",
+            "pollinations_model": Config.POLLINATIONS_MODEL,
+            "image_animation_enabled": Config.IMAGE_ANIMATION_ENABLED,
+            "enabled_media_sources": Config.ENABLED_MEDIA_SOURCES
+        }
+        
+        if os.path.exists(Config.USER_SETTINGS_FILE):
+            try:
+                with open(Config.USER_SETTINGS_FILE, 'r') as f:
+                    saved_settings = json.load(f)
+                    # Update defaults with saved values (preserves new keys if defaults expand)
+                    default_settings.update(saved_settings)
+                    
+                    # Update Config static property if present
+                    if "enabled_media_sources" in saved_settings:
+                         Config.ENABLED_MEDIA_SOURCES = saved_settings["enabled_media_sources"]
+                         
+            except Exception as e:
+                print(f"Error loading user settings: {e}")
+                
+        return default_settings
+
+    @staticmethod
+    def save_user_settings(settings):
+        """Save user settings dict to JSON file."""
+        import json
+        try:
+            with open(Config.USER_SETTINGS_FILE, 'w') as f:
+                json.dump(settings, f, indent=4)
+        except Exception as e:
+            print(f"Error saving user settings: {e}")
+
     @staticmethod
     def validate():
         if not Config.PEXELS_API_KEY:

@@ -146,14 +146,22 @@ class App(ctk.CTk):
         self.task_manager = AsyncTaskManager()
 
 
-        self.tts_service = get_tts_service("pollinations")  # Use Pollinations (working)
+        # Load User Settings
+        self.user_settings = Config.load_user_settings()
+
+        # Initialize TTS based on settings
+        tts_choice = self.user_settings.get("tts_service", "Pollinations AI")
+        if tts_choice == "Gemini TTS":
+             self.tts_service = get_tts_service("gemini")
+        else:
+             self.tts_service = get_tts_service("pollinations")
         self.subtitle_service = SubtitleService()
         self.llm_service = LLMService()
         self.media_service = MediaService()
         self.video_service = VideoService()
 
         # Data
-        self.input_mode = "script"  # "script" or "audio"
+        self.input_mode = self.user_settings.get("input_mode", "script")
         self.uploaded_audio_path = None
         self.generated_audio_path = None
         self.word_subtitles = []
@@ -193,7 +201,7 @@ class App(ctk.CTk):
         
         ctk.CTkLabel(mode_frame, text="Input Mode:").pack(side="left", padx=5)
         
-        self.mode_var = ctk.StringVar(value="script")
+        self.mode_var = ctk.StringVar(value=self.input_mode)
         self.script_mode_radio = ctk.CTkRadioButton(mode_frame, text="Script", variable=self.mode_var, value="script", command=self.toggle_input_mode)
         self.script_mode_radio.pack(side="left", padx=10)
         
@@ -204,11 +212,12 @@ class App(ctk.CTk):
         ratio_frame = ctk.CTkFrame(self.tab_input)
         ratio_frame.pack(fill="x", pady=5)
         ctk.CTkLabel(ratio_frame, text="Aspect Ratio:").pack(side="left", padx=5)
-        self.ratio_var = ctk.StringVar(value="16:9")
+        self.ratio_var = ctk.StringVar(value=self.user_settings.get("aspect_ratio", "16:9"))
         self.ratio_option = ctk.CTkOptionMenu(
             ratio_frame,
             values=["16:9", "9:16", "1:1"],
-            variable=self.ratio_var
+            variable=self.ratio_var,
+            command=self._on_aspect_ratio_change
         )
         self.ratio_option.pack(side="left", padx=10)
 
@@ -329,7 +338,7 @@ class App(ctk.CTk):
             command=self.change_tts_service
         )
         self.tts_option.pack(fill="x", pady=5)
-        self.tts_option.set("Pollinations AI")  # Default (Gemini TTS not working)
+        self.tts_option.set(self.user_settings.get("tts_service", "Pollinations AI"))
         
         # Pollinations Model Selection
         self.model_label = ctk.CTkLabel(self.settings_scroll_frame, text="Pollinations Image Model:")
@@ -338,11 +347,12 @@ class App(ctk.CTk):
         self.model_frame = ctk.CTkFrame(self.settings_scroll_frame, fg_color="transparent")
         self.model_frame.pack(fill="x", pady=5)
         
-        self.model_var = ctk.StringVar(value=Config.POLLINATIONS_MODEL)
+        self.model_var = ctk.StringVar(value=self.user_settings.get("pollinations_model", Config.POLLINATIONS_MODEL))
         self.model_option = ctk.CTkOptionMenu(
             self.model_frame,
             variable=self.model_var,
-            values=self._get_model_list_safe()
+            values=self._get_model_list_safe(),
+            command=self._on_model_change
         )
         self.model_option.pack(side="left", padx=(0, 10))
         
@@ -375,17 +385,19 @@ class App(ctk.CTk):
                 text=label, 
                 variable=var, 
                 onvalue=value, 
-                offvalue=""
+                offvalue="",
+                command=self._on_source_change
             )
             cb.pack(pady=2, anchor="w", padx=10)
             self.source_checkboxes[value] = var
 
         # Image Animation Toggle
-        self.animation_var = ctk.BooleanVar(value=Config.IMAGE_ANIMATION_ENABLED)
+        self.animation_var = ctk.BooleanVar(value=self.user_settings.get("image_animation_enabled", Config.IMAGE_ANIMATION_ENABLED))
         self.animation_cb = ctk.CTkCheckBox(
             self.settings_scroll_frame,
             text="Animate Image Scenes (Ken Burns Effect)",
-            variable=self.animation_var
+            variable=self.animation_var,
+            command=self._save_settings
         )
         self.animation_cb.pack(pady=10, anchor="w")
 
@@ -421,11 +433,13 @@ class App(ctk.CTk):
         elif choice == "Gemini TTS":
             self.tts_service = get_tts_service("gemini")
         print(f"Switched TTS service to: {choice}")
+        self._save_settings()
 
     def toggle_input_mode(self):
         """Toggle between script and audio input modes."""
         mode = self.mode_var.get()
         self.input_mode = mode
+        self._save_settings()
         
         if mode == "script":
             # Show script, hide audio upload
@@ -826,6 +840,43 @@ class App(ctk.CTk):
             #save model for next time application runs not just this session
             Config.POLLINATIONS_MODEL = self.model_var.get()
             Config.save_key("POLLINATIONS_MODEL", Config.POLLINATIONS_MODEL)
+
+    def _on_aspect_ratio_change(self, choice):
+        self._save_settings()
+
+    def _on_model_change(self, choice):
+        self._save_settings()
+
+    def _on_source_change(self):
+        """Callback for media source checkboxes."""
+        self._save_settings()
+
+    def _save_settings(self):
+        """Gather current UI settings and save to JSON."""
+        
+        # Get enabled sources
+        selected_sources = []
+        if hasattr(self, 'source_checkboxes'):
+            for val, var in self.source_checkboxes.items():
+                if var.get():
+                    selected_sources.append(var.get())
+        
+        # Ensure at least one is selected
+        if not selected_sources:
+             selected_sources = ["pexels", "pollinations", "duckduckgo"]
+        
+        # Update Config immediately
+        Config.ENABLED_MEDIA_SOURCES = selected_sources
+        
+        settings = {
+            "aspect_ratio": self.ratio_var.get(),
+            "input_mode": self.input_mode,
+            "tts_service": self.tts_option.get() if hasattr(self, 'tts_option') else "Pollinations AI",
+            "pollinations_model": self.model_var.get() if hasattr(self, 'model_var') else "zimage",
+            "image_animation_enabled": self.animation_var.get() if hasattr(self, 'animation_var') else True,
+            "enabled_media_sources": selected_sources
+        }
+        Config.save_user_settings(settings)
 
 
     def on_closing(self):
