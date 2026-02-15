@@ -1,5 +1,7 @@
 import threading
 import os
+import subprocess
+import shutil
 from moviepy import (
     ColorClip, VideoFileClip, ImageClip, AudioFileClip,
     concatenate_videoclips, CompositeVideoClip, TextClip
@@ -528,4 +530,81 @@ class VideoService:
                 except: pass
             self.temp_clips = []
             # Stop the whole process if a scene fails
-            raise Exception(f"Video Generation Failed: {e}")
+    def burn_subtitles(self, video_path, subtitle_path, output_path, style_options=None):
+        """
+        Burn subtitles into video using ffmpeg.
+        """
+        if not shutil.which("ffmpeg"):
+            raise Exception("FFmpeg not found in system PATH. Please install FFmpeg.")
+
+        if not os.path.exists(video_path):
+            raise Exception(f"Video file not found: {video_path}")
+        if not os.path.exists(subtitle_path):
+            raise Exception(f"Subtitle file not found: {subtitle_path}")
+
+        # Default style options
+        default_style = {
+            "FontName": "Arial",
+            "FontSize": "18",
+            "PrimaryColour": "&HFFFFFF&",
+            "OutlineColour": "&H000000&",
+            "BorderStyle": "3",
+            "Outline": "1.5",
+            "Shadow": "0",
+            "BackColour": "&H80000000&",
+            "Alignment": "2",
+            "MarginV": "60"
+        }
+
+        if style_options:
+            default_style.update(style_options)
+
+        # Construct style string
+        style_str = ",".join([f"{k}={v}" for k, v in default_style.items()])
+
+        # Path handling for FFmpeg filter
+        # 1. Normalize to forward slashes
+        subtitle_path_fwd = subtitle_path.replace("\\", "/")
+        # 2. Escape colon in drive letter (e.g. "C:" -> "C\:")
+        subtitle_path_fwd = subtitle_path_fwd.replace(":", "\\:")
+        
+        # Construct filter string
+        # Note: 'subtitles' filter filename needs to be quoted
+        vf_string = f"subtitles='{subtitle_path_fwd}':force_style='{style_str}'"
+
+        cmd = [
+            "ffmpeg",
+            "-y", # Overwrite
+            "-i", video_path,
+            "-vf", vf_string,
+            "-c:a", "copy",
+            "-preset", "veryfast",
+            output_path
+        ]
+
+        print(f"Running FFmpeg command: {' '.join(cmd)}")
+        
+        # Run construction of startup info to hide console window on Windows
+        startupinfo = None
+        if os.name == 'nt':
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            startupinfo=startupinfo,
+            encoding='utf-8', 
+            errors='replace'
+        )
+        
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            print(f"FFmpeg Error: {stderr}")
+            raise Exception(f"FFmpeg failed. Check console for details.")
+
+        print(f"Subtitles burned successfully to {output_path}")
+        return output_path

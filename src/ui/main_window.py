@@ -188,10 +188,12 @@ class App(ctk.CTk):
         
         self.tab_input = self.tab_view.add("Input")
         self.tab_preview = self.tab_view.add("Preview")
+        self.tab_tools = self.tab_view.add("Tools")
         self.tab_settings = self.tab_view.add("Settings")
 
         self._setup_input_tab()
         self._setup_preview_tab()
+        self._setup_tools_tab()
         self._setup_settings_tab()
 
     def _setup_input_tab(self):
@@ -290,6 +292,147 @@ class App(ctk.CTk):
         # Scrollable list for scenes
         self.scenes_frame = ctk.CTkScrollableFrame(self.tab_preview, width=800, height=500)
         self.scenes_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+    def _setup_tools_tab(self):
+        # Tools Tab Layout
+        
+        # 1. Subtitle Burner Section
+        self.burner_frame = ctk.CTkFrame(self.tab_tools)
+        self.burner_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        ctk.CTkLabel(self.burner_frame, text="Subtitle Burner (FFmpeg)", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=10)
+        
+        # Files Section
+        files_frame = ctk.CTkFrame(self.burner_frame)
+        files_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Video File
+        ctk.CTkLabel(files_frame, text="Video File:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        self.burn_video_entry = ctk.CTkEntry(files_frame, width=400)
+        self.burn_video_entry.grid(row=0, column=1, padx=5, pady=5)
+        if os.path.exists(os.path.join(Config.OUTPUT_DIR, "final_video.mp4")):
+            self.burn_video_entry.insert(0, os.path.join(Config.OUTPUT_DIR, "final_video.mp4"))
+            
+        ctk.CTkButton(files_frame, text="Browse", width=80, command=self._browse_burn_video).grid(row=0, column=2, padx=5)
+        
+        # Subtitle File
+        ctk.CTkLabel(files_frame, text="Subtitle File (SRT):").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+        self.burn_sub_entry = ctk.CTkEntry(files_frame, width=400)
+        self.burn_sub_entry.grid(row=1, column=1, padx=5, pady=5)
+        if os.path.exists(os.path.join(Config.OUTPUT_DIR, "generated_audio.srt")):
+            self.burn_sub_entry.insert(0, os.path.join(Config.OUTPUT_DIR, "generated_audio.srt"))
+
+        ctk.CTkButton(files_frame, text="Browse", width=80, command=self._browse_burn_sub).grid(row=1, column=2, padx=5)
+        
+        # Style Options
+        style_frame = ctk.CTkFrame(self.burner_frame)
+        style_frame.pack(fill="x", padx=10, pady=10)
+        ctk.CTkLabel(style_frame, text="Style Options (ASS/SSA format):", font=ctk.CTkFont(weight="bold")).pack(pady=(5,10))
+        
+        options_grid = ctk.CTkFrame(style_frame, fg_color="transparent")
+        options_grid.pack(fill="x", padx=5)
+        
+        self.style_entries = {}
+        defaults = {
+            "FontName": "Arial",
+            "FontSize": "18",
+            "PrimaryColour": "&HFFFFFF&",
+            "OutlineColour": "&H000000&",
+            "BorderStyle": "3",
+            "Outline": "1.5",
+            "Shadow": "0",
+            "BackColour": "&H80000000&",
+            "Alignment": "2",
+            "MarginV": "60"
+        }
+        
+        row = 0
+        col = 0
+        for key, val in defaults.items():
+            ctk.CTkLabel(options_grid, text=key + ":").grid(row=row, column=col*2, sticky="e", padx=5, pady=2)
+            entry = ctk.CTkEntry(options_grid, width=150)
+            entry.insert(0, val)
+            entry.grid(row=row, column=col*2+1, sticky="w", padx=5, pady=2)
+            self.style_entries[key] = entry
+            
+            col += 1
+            if col > 1:
+                col = 0
+                row += 1
+                
+        # Action
+        self.burn_btn = ctk.CTkButton(self.burner_frame, text="Burn Subtitles", command=self.start_burning_subtitles, fg_color="orange", height=40, font=ctk.CTkFont(size=14, weight="bold"))
+        self.burn_btn.pack(pady=20)
+        
+        self.burn_status_label = ctk.CTkLabel(self.burner_frame, text="Ready", text_color="gray")
+        self.burn_status_label.pack(pady=5)
+
+    def _browse_burn_video(self):
+        filename = filedialog.askopenfilename(filetypes=[("Video files", "*.mp4 *.avi *.mov *.mkv")])
+        if filename:
+            self.burn_video_entry.delete(0, "end")
+            self.burn_video_entry.insert(0, filename)
+
+    def _browse_burn_sub(self):
+        filename = filedialog.askopenfilename(filetypes=[("Subtitle files", "*.srt *.ass *.ssa")])
+        if filename:
+            self.burn_sub_entry.delete(0, "end")
+            self.burn_sub_entry.insert(0, filename)
+
+    def start_burning_subtitles(self):
+        video_path = self.burn_video_entry.get()
+        subtitle_path = self.burn_sub_entry.get()
+        
+        if not os.path.exists(video_path):
+            messagebox.showerror("Error", "Video file not found.")
+            return
+        if not os.path.exists(subtitle_path):
+            messagebox.showerror("Error", "Subtitle file not found.")
+            return
+            
+        # Collect style options
+        style_options = {}
+        for key, entry in self.style_entries.items():
+            style_options[key] = entry.get()
+            
+        # Output path
+        dir_name = os.path.dirname(video_path)
+        base_name = os.path.splitext(os.path.basename(video_path))[0]
+        # Avoid overwriting input if user selected input
+        if "subbed" in base_name:
+             output_path = os.path.join(dir_name, f"{base_name}_new.mp4")
+        else:
+             output_path = os.path.join(dir_name, f"{base_name}_subbed.mp4")
+        
+        self.burn_status_label.configure(text="Burning subtitles...", text_color="blue")
+        self.burn_btn.configure(state="disabled")
+        
+        self.task_manager.submit_task(
+            self.video_service.burn_subtitles,
+            self._on_burn_complete,
+            video_path,
+            subtitle_path,
+            output_path,
+            style_options
+        )
+        
+    def _on_burn_complete(self, result, error):
+        self.burn_btn.configure(state="normal")
+        if error:
+            self.burn_status_label.configure(text=f"Error: {error}", text_color="red")
+            messagebox.showerror("Burning Failed", str(error))
+        else:
+            self.burn_status_label.configure(text="SUCCESS!", text_color="green")
+            messagebox.showinfo("Success", f"Video saved to:\n{result}")
+            # Try to open
+            if messagebox.askyesno("Open Video?", "Open the generated video?"):
+                 try:
+                    if os.name == 'nt':
+                        os.startfile(result)
+                    else:
+                        import subprocess
+                        subprocess.call(('xdg-open', result))
+                 except: pass
 
     def _setup_settings_tab(self):
         # Create Scrollable Frame covering the entire tab
