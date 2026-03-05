@@ -40,51 +40,7 @@ class LLMService:
         """
 
 
-        # system_prompt = f"""
-        #         You are an expert video director.
-
-        #         TASK:
-        #         Convert the narration script and word-level timings into a precise video production plan.
-
-        #         INPUT:
-        #         1. Script
-        #         2. Word Timings (JSON)
-
-        #         OUTPUT:
-        #         Return ONLY valid JSON with key "scenes".
-
-        #         Do not create overly long scenes.
-        #         Scene duration must be naturally derived from narration flow, not fixed seconds.
-                
-
-        #         Each scene MUST include:
-        #         - id (int)
-        #         - text (exact spoken phrase)
-        #         - start_time (float)
-        #         - end_time (float)
-        #         - media_source (one of {json.dumps(enabled)})
-        #         - visual_query (string)
-
-        #         TIMING RULES:
-        #         - First scene starts at first word timestamp
-        #         - Every next scene starts EXACTLY at previous scene’s end_time
-        #         - No gaps, no overlaps
-        #         - Timings must come strictly from word timings
-
-        #         MEDIA RULES:
-        #         - media_source MUST be chosen ONLY from enabled sources: {json.dumps(enabled)}
-        #         - Use source-specific behavior exactly as defined below
-        #         - 
-
-        #         SOURCE-SPECIFIC INSTRUCTIONS:
-        #         {available_sources_prompt}
-
-        #         OUTPUT RULES:
-        #         - JSON ONLY
-        #         - No markdown
-        #         - No explanations
-        #         - No extra text
-        #         """
+        
 
         # Combine instructions and data into a single robust prompt
         #add a random seed in prompt for entropy
