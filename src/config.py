@@ -16,7 +16,7 @@ class Config:
     POLLINATIONS_MODELS_FILE = os.path.join(os.getcwd(), "pollinations_models.json")
     
     # Default enabled sources
-    ENABLED_MEDIA_SOURCES = os.getenv("ENABLED_MEDIA_SOURCES", "pexels,pollinations,duckduckgo").split(",")
+    ENABLED_MEDIA_SOURCES = os.getenv("ENABLED_MEDIA_SOURCES", "pexels,pollinations").split(",")
 
     # User Settings File
     USER_SETTINGS_FILE = os.path.join(os.getcwd(), "user_settings.json")
